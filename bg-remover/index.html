@@ -40,7 +40,9 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-.vh { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+.filebtn { position: relative; overflow: hidden; }
+/* 画像選択の部品そのものを透明にしてボタン全体に重ねる（スマホで確実に反応させるため） */
+.filebtn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg); color: var(--ink); font: 14px/1.6 var(--sans);
@@ -158,8 +160,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 <header>
   <a class="back" href="../">← ツール一覧</a>
   <h1>背景透過ツール</h1>
-  <label class="btn primary" for="file">画像を開く</label>
-  <input id="file" class="vh" type="file" accept="image/*">
+  <span class="btn primary filebtn">画像を開く<input id="file" type="file" accept="image/*" aria-label="画像を開く"></span>
   <button id="undo" title="元に戻す (Ctrl+Z)">元に戻す</button>
   <button id="redo" title="やり直し (Ctrl+Y)">やり直し</button>
   <p id="limitNote" class="limit"></p>
@@ -351,7 +352,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
   const MAX_PIXELS = IS_TOUCH ? 6e6 : 16e6;
   const UNDO_BYTES = IS_TOUCH ? 48e6 : 150e6;
-  const VERSION = '2026-10-09';
+  const VERSION = '2026-10-09b';
   el('limitNote').textContent = '版 ' + VERSION + '　' + (IS_TOUCH
     ? 'スマホでは約600万画素（3000×2000程度）'
     : '約1600万画素（4900×3200程度）') + 'を超える画像は自動で縮小して読み込みます。保存される画像も縮小後のサイズになります。';
@@ -431,9 +432,31 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     };
     img.src = url;
   }
-  el('file').addEventListener('change', e => {
-    const f = e.target.files[0]; if (f) loadBlob(f, f.name); e.target.value = '';
+  // 画像選択中にスマホがメモリ不足でページを読み込み直したかを調べるため、選択中の印を残す
+  const PICK_KEY = 'bg-remover-picking';
+  const fileEl = el('file');
+  fileEl.addEventListener('click', () => { try { sessionStorage.setItem(PICK_KEY, String(Date.now())); } catch (e) {} });
+  const clearPick = () => { try { sessionStorage.removeItem(PICK_KEY); } catch (e) {} };
+  // 選択画面から戻ってきたら印を消す（ページが読み込み直された場合は消されずに残る）
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(clearPick, 500); });
+  window.addEventListener('focus', () => setTimeout(clearPick, 500));
+  fileEl.addEventListener('change', () => {
+    clearPick();
+    const f = fileEl.files && fileEl.files[0];
+    fileEl.value = '';
+    if (!f) return;
+    if (!f.size) {
+      notice('「' + (f.name || '画像') + '」の中身を受け取れませんでした（0 MB）。クラウドにだけある写真の可能性があります。いったん端末に保存してから選んでください。', true);
+      return;
+    }
+    loadBlob(f, f.name || '画像');
   });
+  let reloadedWhilePicking = false;
+  try {
+    const t = +sessionStorage.getItem(PICK_KEY);
+    if (t && Date.now() - t < 10 * 60 * 1000) reloadedWhilePicking = true;
+    clearPick();
+  } catch (e) {}
   // ドラッグ＆ドロップ
   let dragDepth = 0;
   document.addEventListener('dragenter', e => { if ([...e.dataTransfer.types].includes('Files')) { dragDepth++; el('drop').hidden = false; } });
@@ -1006,7 +1029,12 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     g.strokeStyle = '#3d3b37'; g.lineWidth = 6; g.beginPath(); g.moveTo(320, 95); g.lineTo(338, 52); g.stroke();
     g.fillStyle = '#d8423a'; g.beginPath(); g.arc(340, 48, 10, 0, 7); g.fill();
     const img = new Image();
-    img.onload = () => setImage(img, 'sample.png');
+    img.onload = () => {
+      setImage(img, 'sample.png');
+      if (reloadedWhilePicking) {
+        notice('画像を選んでいる間に、ブラウザがこのページを最初から読み込み直したため、選んだ画像が受け取れませんでした。スマホのメモリが足りないときに起こります。他のアプリやブラウザのタブを閉じてから、もう一度「画像を開く」を押してください。', true);
+      }
+    };
     img.src = c.toDataURL('image/png');
   }
 
