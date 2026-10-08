@@ -108,6 +108,11 @@ main { position: relative; min-width: 0; min-height: 0; display: flex; flex-dire
 #view.pixel { image-rendering: pixelated; }
 #view.brush { touch-action: none; cursor: none; }
 #view.pick { cursor: crosshair; }
+#marks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: .55; }
+#marks.pixel { image-rendering: pixelated; }
+.sub { font-size: 13px; font-weight: 700; margin: 6px 0 0; padding-top: 10px; border-top: 1px dashed var(--line); }
+.tool .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.dot.keep { background: #1fae5b; } .dot.drop { background: #e0343a; }
 #cursor {
   position: absolute; pointer-events: none; border-radius: 50%;
   border: 1px solid #fff; box-shadow: 0 0 0 1px #000; transform: translate(-50%, -50%);
@@ -126,6 +131,8 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 #status { margin-left: auto; color: var(--ink); }
 #status.err { color: var(--warn); }
 .notice {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 4;
+  box-shadow: 0 2px 6px rgb(0 0 0 / .12);
   display: flex; gap: 12px; align-items: flex-start;
   padding: 10px 16px; background: var(--note-bg); color: var(--ink);
   border-bottom: 1px solid var(--note-line); font-size: 13px;
@@ -170,6 +177,13 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
         <button class="tool" data-tool="erase" aria-pressed="false">消しゴム<small>なぞって透明に</small></button>
         <button class="tool" data-tool="restore" aria-pressed="false">復元ブラシ<small>なぞって元に戻す</small></button>
       </div>
+      <h3 class="sub">背景が複雑なとき：境目で切り抜く</h3>
+      <p class="hint">残したい人物や物を<b>緑</b>でざっくりなぞり、背景を<b>赤</b>でなぞると、その間にある輪郭（境目）を探して背景側をまとめて消します。色は関係ないので、ごちゃごちゃした背景でも使えます。うまく分かれない所は、そこに印を足してください。</p>
+      <div class="grid2" role="group" aria-label="境目で切り抜く">
+        <button class="tool" data-tool="keep" aria-pressed="false"><span class="dot keep"></span>残す印<small>人物・物をなぞる</small></button>
+        <button class="tool" data-tool="drop" aria-pressed="false"><span class="dot drop"></span>消す印<small>背景をなぞる</small></button>
+      </div>
+      <button id="clearMarks">印をすべて消す</button>
       <label class="slider">許容範囲（色の近さ）<output id="tolOut">18</output>
         <input id="tol" type="range" min="0" max="100" value="18"></label>
       <label class="slider">境界のなめらかさ<output id="softOut">8</output>
@@ -243,7 +257,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     <section>
       <h2>操作のヒント</h2>
       <p class="hint">画像はドラッグ＆ドロップや <span class="kbd">Ctrl</span>+<span class="kbd">V</span> の貼り付けでも開けます。<br>
-      <span class="kbd">W</span> 範囲クリック ／ <span class="kbd">G</span> 同色一括 ／ <span class="kbd">E</span> 消しゴム ／ <span class="kbd">R</span> 復元<br>
+      <span class="kbd">W</span> 範囲クリック ／ <span class="kbd">G</span> 同色一括 ／ <span class="kbd">E</span> 消しゴム ／ <span class="kbd">R</span> 復元 ／ <span class="kbd">K</span> 残す印 ／ <span class="kbd">D</span> 消す印<br>
       <span class="kbd">[</span> <span class="kbd">]</span> ブラシサイズ ／ <span class="kbd">Ctrl</span>+ホイール 拡大縮小<br>
       画像は外部に送信されず、すべてブラウザ内で処理されます。</p>
       <p class="hint"><b>大きい画像は自動で縮小されます。</b>上限はスマホで約600万画素（3000×2000程度）、パソコンで約1600万画素（4900×3200程度）です。縮小した場合は保存される画像も縮小後のサイズになります。元の大きさのまま保存したいときはパソコンで使ってください。</p>
@@ -256,7 +270,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
       <button id="noticeClose" aria-label="お知らせを閉じる">閉じる</button>
     </div>
     <div id="stage">
-      <div class="pad"><div id="wrap" class="checker"><canvas id="view" class="pick"></canvas><div id="cursor" hidden></div></div></div>
+      <div class="pad"><div id="wrap" class="checker"><canvas id="view" class="pick"></canvas><canvas id="marks" hidden></canvas><div id="cursor" hidden></div></div></div>
     </div>
     <div id="drop" hidden>ここに画像をドロップ</div>
   </main>
@@ -281,6 +295,9 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   let mask = null;     // 残す度合い 0〜255
   let outImg = null;   // 表示用 ImageData
   let keyColor = null; // 直近で消した背景色 [r,g,b]
+  // 境目で切り抜く: 印（0=なし 1=残す 2=消す）、印を付け始めた時点のマスク、輪郭の強さ
+  let marks = null, segBase = null, edges = null;
+  const marksEl = document.getElementById('marks'), mctx = marksEl.getContext('2d');
   let zoom = 1;
   let tool = 'wand';
   let undoStack = [], redoStack = [];
@@ -334,7 +351,8 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
   const MAX_PIXELS = IS_TOUCH ? 6e6 : 16e6;
   const UNDO_BYTES = IS_TOUCH ? 48e6 : 150e6;
-  el('limitNote').textContent = (IS_TOUCH
+  const VERSION = '2026-10-09';
+  el('limitNote').textContent = '版 ' + VERSION + '　' + (IS_TOUCH
     ? 'スマホでは約600万画素（3000×2000程度）'
     : '約1600万画素（4900×3200程度）') + 'を超える画像は自動で縮小して読み込みます。保存される画像も縮小後のサイズになります。';
 
@@ -356,6 +374,8 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     W = w; H = h; src = data;
     mask = new Uint8Array(W * H).fill(255);
     keyColor = null;
+    marks = new Uint8Array(W * H); segBase = null; edges = null;
+    marksEl.width = W; marksEl.height = H;
     view.width = W; view.height = H;
     outImg = vctx.createImageData(W, H);
     el('fname').value = name.replace(/\.[^.]+$/, '') + '_nobg';
@@ -550,7 +570,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   }
   el('auto').addEventListener('click', () => {
     if (!src) return;
-    pushUndo();
+    pushUndo(); segBase = null;
     const { k, seeds } = borderColor();
     keyColor = k;
     const n = floodRemove(seeds, k);
@@ -562,7 +582,8 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   function setTool(t) {
     tool = t;
     document.querySelectorAll('.tool').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === t)));
-    const brush = t === 'erase' || t === 'restore';
+    const brush = t === 'erase' || t === 'restore' || t === 'keep' || t === 'drop';
+    marksEl.hidden = !(t === 'keep' || t === 'drop');
     view.classList.toggle('brush', brush);
     view.classList.toggle('pick', !brush);
     if (!brush) cursorEl.hidden = true;
@@ -579,6 +600,15 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     const r = +sizeEl.value / 2, h = +hardEl.value / 100, erase = tool === 'erase';
     const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(W - 1, Math.ceil(cx + r));
     const y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(H - 1, Math.ceil(cy + r));
+    if (tool === 'keep' || tool === 'drop') {
+      const v = tool === 'keep' ? 1 : 2;
+      mctx.fillStyle = v === 1 ? '#1fae5b' : '#e0343a';
+      mctx.beginPath(); mctx.arc(cx, cy, Math.max(r, 0.7), 0, 7); mctx.fill();
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) <= Math.max(r, 0.7)) marks[y * W + x] = v;
+      }
+      return null;
+    }
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         const t = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / r;
@@ -599,10 +629,11 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     for (let s = (last ? 1 : 0); s <= n; s++) {
       const q = { x: from.x + (p.x - from.x) * s / n, y: from.y + (p.y - from.y) * s / n };
       const b = stamp(q.x, q.y);
+      if (!b) continue;
       bx0 = Math.min(bx0, b[0]); by0 = Math.min(by0, b[1]); bx1 = Math.max(bx1, b[2]); by1 = Math.max(by1, b[3]);
     }
     last = p;
-    render(bx0, by0, bx1, by1);
+    if (bx1 > bx0) render(bx0, by0, bx1, by1);
   }
   view.addEventListener('pointerdown', e => {
     if (!src || e.button > 0) return;
@@ -612,13 +643,15 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     if (tool === 'wand' || tool === 'global') {
       const i = y * W + x, q = i * 4;
       const k = [src[q], src[q + 1], src[q + 2]];
-      pushUndo(); keyColor = k;
+      pushUndo(); keyColor = k; segBase = null;
       const n = tool === 'wand' ? floodRemove([i], k) : globalRemove(k);
       render(); updateInfo();
       status(colorText(k) + ' を' + (tool === 'wand' ? 'つながった範囲で' : '画像全体から') + '消しました（' + n.toLocaleString() + ' px）。');
       return;
     }
-    pushUndo(); drawing = true; last = null;
+    if (tool === 'keep' || tool === 'drop') { if (!segBase) segBase = mask.slice(); }
+    else { pushUndo(); segBase = null; }
+    drawing = true; last = null;
     view.setPointerCapture(e.pointerId);
     strokeTo(p);
   });
@@ -626,7 +659,11 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     moveCursor(e);
     if (drawing) strokeTo(imgPos(e));
   });
-  const endStroke = () => { if (drawing) { drawing = false; last = null; updateInfo(); } };
+  const endStroke = () => {
+    if (!drawing) return;
+    drawing = false; last = null;
+    if (tool === 'keep' || tool === 'drop') runSegment(); else updateInfo();
+  };
   view.addEventListener('pointerup', endStroke);
   view.addEventListener('pointercancel', endStroke);
   view.addEventListener('pointerleave', () => { cursorEl.hidden = true; });
@@ -635,7 +672,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   let lastMouse = null;
   function moveCursor(e) {
     if (e) lastMouse = e;
-    if (!lastMouse || (tool !== 'erase' && tool !== 'restore') || lastMouse.pointerType === 'touch') { cursorEl.hidden = true; return; }
+    if (!lastMouse || !view.classList.contains('brush') || lastMouse.pointerType === 'touch') { cursorEl.hidden = true; return; }
     const r = view.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
     cursorEl.hidden = false;
     cursorEl.style.left = (lastMouse.clientX - wr.left) + 'px';
@@ -647,6 +684,100 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     const d = +sizeEl.value * (W ? r.width / W : 1);
     cursorEl.style.width = cursorEl.style.height = Math.max(4, d) + 'px';
   }
+
+  // ---------- 境目で切り抜く ----------
+  // 色の変化の強さ（輪郭）を 0〜255 で求める。Sobel フィルタ（自体に軽いぼかしを含む）で R・G・B の最大値をとる
+  function computeEdges() {
+    const N = W * H, e = new Uint8Array(N);
+    for (let y = 0; y < H; y++) {
+      const ym = Math.max(0, y - 1) * W, y0 = y * W, yp = Math.min(H - 1, y + 1) * W;
+      for (let x = 0; x < W; x++) {
+        const xm = Math.max(0, x - 1), xp = Math.min(W - 1, x + 1);
+        const a = (ym + xm) * 4, b = (ym + x) * 4, c = (ym + xp) * 4;
+        const d = (y0 + xm) * 4, f = (y0 + xp) * 4;
+        const g = (yp + xm) * 4, h = (yp + x) * 4, k = (yp + xp) * 4;
+        let best = 0;
+        for (let ch = 0; ch < 3; ch++) {
+          const gx = src[c + ch] + 2 * src[f + ch] + src[k + ch] - src[a + ch] - 2 * src[d + ch] - src[g + ch];
+          const gy = src[g + ch] + 2 * src[h + ch] + src[k + ch] - src[a + ch] - 2 * src[b + ch] - src[c + ch];
+          const m = gx * gx + gy * gy;
+          if (m > best) best = m;
+        }
+        e[y0 + x] = Math.min(255, Math.sqrt(best) / 4);
+      }
+    }
+    return e;
+  }
+  // 残す印・消す印から同時に領域を広げ、輪郭の弱い所から先に埋めていく（マーカー付き watershed）。
+  // 両方の領域がぶつかる所が、間にある一番強い輪郭になる
+  function runSegment() {
+    let hasKeep = false, hasDrop = false;
+    for (let i = 0; i < marks.length && !(hasKeep && hasDrop); i++) {
+      if (marks[i] === 1) hasKeep = true; else if (marks[i] === 2) hasDrop = true;
+    }
+    if (!hasKeep || !hasDrop) {
+      notice(hasKeep ? '次に、消したい背景を「消す印（赤）」でなぞってください。'
+                     : '次に、残したい人物や物を「残す印（緑）」でなぞってください。');
+      return;
+    }
+    status('境目を計算中…'); notice('境目を計算中…');
+    setTimeout(() => {
+      if (!edges) edges = computeEdges();
+      const N = W * H, label = new Uint8Array(N), next = new Int32Array(N);
+      const head = new Int32Array(256).fill(-1);
+      for (let i = 0; i < N; i++) if (marks[i]) { label[i] = marks[i]; next[i] = head[0]; head[0] = i; }
+      for (let lv = 0; lv < 256; lv++) {
+        while (head[lv] !== -1) {
+          const i = head[lv]; head[lv] = next[i];
+          const x = i % W, l = label[i];
+          // 隣の画素を同じ側に取り込み、輪郭の強さのレベルに積む（今より低いレベルには積まない）
+          for (let d = 0; d < 4; d++) {
+            let j;
+            if (d === 0) { if (x === 0) continue; j = i - 1; }
+            else if (d === 1) { if (x === W - 1) continue; j = i + 1; }
+            else if (d === 2) { if (i < W) continue; j = i - W; }
+            else { if (i >= N - W) continue; j = i + W; }
+            if (label[j]) continue;
+            label[j] = l;
+            const g = edges[j], to = g > lv ? g : lv;
+            next[j] = head[to]; head[to] = j;
+          }
+        }
+      }
+      pushUndo();
+      // 境目は 3×3 の平均で少しなめらかにする
+      const out = new Uint8Array(N);
+      let removed = 0;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const i = y * W + x;
+          let v;
+          const edge = (x > 0 && label[i - 1] !== label[i]) || (x < W - 1 && label[i + 1] !== label[i]) ||
+                       (y > 0 && label[i - W] !== label[i]) || (y < H - 1 && label[i + W] !== label[i]);
+          if (!edge) v = label[i] === 1 ? 255 : 0;
+          else {
+            let k = 0, n = 0;
+            for (let dy = -1; dy <= 1; dy++) { const yy = y + dy; if (yy < 0 || yy >= H) continue;
+              for (let dx = -1; dx <= 1; dx++) { const xx = x + dx; if (xx < 0 || xx >= W) continue;
+                if (label[yy * W + xx] === 1) k++; n++; } }
+            v = Math.round(k / n * 255);
+          }
+          v = Math.min(v, segBase[i]);
+          if (v === 0 && segBase[i] !== 0) removed++;
+          out[i] = v;
+        }
+      }
+      mask = out; keyColor = null;
+      render(); updateInfo();
+      notice('');
+      status('境目で切り抜きました（背景 ' + removed.toLocaleString() + ' px を消去）。はみ出した所や消えすぎた所は、そこに印を足すと計算し直します。');
+    }, 30);
+  }
+  el('clearMarks').addEventListener('click', () => {
+    if (!marks) return;
+    marks.fill(0); mctx.clearRect(0, 0, W, H); segBase = null;
+    status('印をすべて消しました。切り抜いた結果はそのまま残っています（戻すときは「元に戻す」）。');
+  });
 
   // ---------- 仕上げ ----------
   function morph(fn) {
@@ -668,7 +799,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   }
   function apply(name, fn) {
     if (!src) return;
-    pushUndo(); mask = fn(); render(); updateInfo(); status(name + 'しました。');
+    pushUndo(); segBase = null; mask = fn(); render(); updateInfo(); status(name + 'しました。');
   }
   el('shrink').addEventListener('click', () => apply('縁を1px削りま', () => morph({ init: 255, step: Math.min })));
   el('grow').addEventListener('click', () => apply('縁を1px広げま', () => morph({ init: 0, step: Math.max })));
@@ -682,6 +813,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     view.style.width = (W * zoom) + 'px';
     view.style.height = (H * zoom) + 'px';
     view.classList.toggle('pixel', zoom >= 2);
+    marksEl.classList.toggle('pixel', zoom >= 2);
     el('zoomVal').textContent = Math.round(zoom * 100) + '%';
     updateCursorSize();
   }
@@ -719,7 +851,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const map = { w: 'wand', g: 'global', e: 'erase', r: 'restore' };
+    const map = { w: 'wand', g: 'global', e: 'erase', r: 'restore', k: 'keep', d: 'drop' };
     if (map[k]) setTool(map[k]);
     if (k === '[' || k === ']') {
       sizeEl.value = Math.round(+sizeEl.value * (k === ']' ? 1.2 : 1 / 1.2)) + (k === ']' ? 1 : 0);
