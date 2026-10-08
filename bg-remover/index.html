@@ -130,7 +130,8 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   padding: 10px 16px; background: var(--note-bg); color: var(--ink);
   border-bottom: 1px solid var(--note-line); font-size: 13px;
 }
-.notice p { margin: 0; flex: 1; min-width: 0; }
+.notice p { margin: 0; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.notice.err p { color: var(--warn); font-weight: 700; }
 .notice button { padding: 2px 10px; font-size: 12px; flex: none; }
 .savesize { font-size: 13px; margin: 0; font-variant-numeric: tabular-nums; }
 .savesize.shrunk { color: var(--warn); }
@@ -294,13 +295,20 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     const s = el('status'); s.textContent = msg; s.classList.toggle('err', !!isErr);
   }
   const fmtSize = (w, h) => w + '×' + h;
-  function showShrinkNotice() {
+  // 画像のすぐ上のお知らせ帯（スマホでも目に入る位置）。msg が空なら隠す
+  function notice(msg, isErr) {
     const n = el('notice');
-    if (!origSize) { n.hidden = true; return; }
-    el('noticeText').textContent = '大きい画像のため ' + fmtSize(origSize[0], origSize[1]) + ' から ' + fmtSize(W, H) +
-      ' に縮小して読み込みました。保存される画像もこのサイズになります。元の大きさで保存したいときはパソコンで開いてください。';
-    n.hidden = false;
+    n.hidden = !msg;
+    n.classList.toggle('err', !!isErr);
+    el('noticeText').textContent = msg || '';
   }
+  function showShrinkNotice() {
+    notice(origSize ? '大きい画像のため ' + fmtSize(origSize[0], origSize[1]) + ' から ' + fmtSize(W, H) +
+      ' に縮小して読み込みました。保存される画像もこのサイズになります。元の大きさで保存したいときはパソコンで開いてください。' : '');
+  }
+  // 想定外のエラーも画面に出す（スマホでは開発者ツールが見られないため）
+  window.addEventListener('error', e => notice('エラーが発生しました: ' + (e.message || '不明なエラー'), true));
+  window.addEventListener('unhandledrejection', e => notice('エラーが発生しました: ' + ((e.reason && e.reason.message) || e.reason || '不明なエラー'), true));
   function updateSaveSize() {
     const p = el('saveSize');
     let t = '保存サイズ: ' + fmtSize(W, H);
@@ -357,29 +365,50 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     updateSaveSize();
     return origSize;
   }
-  let loading = false;
+  // 画像を読み込む。新しい画像を選んだら前の読み込みは捨てる（途中で止まっても次が選べるように）
+  let loadToken = 0;
   function loadBlob(blob, name) {
-    if (loading) return;
-    loading = true;
-    status('「' + name + '」を読み込み中…');
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    const done = () => { URL.revokeObjectURL(url); loading = false; };
-    img.onload = () => {
+    const token = ++loadToken;
+    const info = '「' + name + '」(' + (blob.type || '形式不明') + '、' + (blob.size / 1048576).toFixed(1) + ' MB)';
+    const fail = msg => {
+      if (token !== loadToken) return;
+      loadToken++;
+      status(msg, true);
+      notice(info + ' を読み込めませんでした。' + msg, true);
+    };
+    status(info + ' を読み込み中…');
+    notice(info + ' を読み込み中…');
+    const timer = setTimeout(() => fail('時間がかかりすぎたため中止しました。画像が大きすぎる可能性があります。スクリーンショットなど小さい画像で試してください。'), 30000);
+    const finish = img => {
+      if (token !== loadToken) return;
+      clearTimeout(timer);
       // 読み込み中の表示を先に画面へ出してから重い処理をする
       setTimeout(() => {
+        if (token !== loadToken) return;
         try {
           const orig = setImage(img, name);
+          loadToken++;
           status(orig
             ? '「' + name + '」を読み込みました。大きい画像なので ' + W + '×' + H + ' に縮小しています（元は ' + orig[0] + '×' + orig[1] + '）。'
             : '「' + name + '」を読み込みました。');
         } catch (err) {
-          status('この画像は読み込めませんでした。画像が大きすぎる可能性があります。小さくした画像かスクリーンショットで試してください。', true);
+          fail('画像が大きすぎる可能性があります。スクリーンショットなど小さい画像で試してください。（' + err.message + '）');
         }
-        done();
+        if (img.close) img.close();
       }, 30);
     };
-    img.onerror = () => { done(); status('この画像は読み込めませんでした。PNG・JPEG・WebP・GIF・BMP のいずれかを選んでください。', true); };
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); finish(img); };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      // <img> で読めない場合は別の方法でもう一度試す
+      if (window.createImageBitmap) {
+        createImageBitmap(blob).then(finish, () => fail('この形式には対応していません。PNG・JPEG・WebP・GIF・BMP のいずれかを選んでください。'));
+      } else {
+        fail('この形式には対応していません。PNG・JPEG・WebP・GIF・BMP のいずれかを選んでください。');
+      }
+    };
     img.src = url;
   }
   el('file').addEventListener('change', e => {
