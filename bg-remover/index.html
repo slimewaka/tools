@@ -165,7 +165,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   <a class="back" href="../">← ツール一覧</a>
   <h1>背景透過ツール</h1>
   <button id="open" class="primary">画像を開く</button>
-  <button id="open2" title="「画像を開く」で選んでも反映されないとき用">ファイルから選ぶ</button>
+  <button id="open2" title="「画像を開く」で選んでも反映されないとき用" hidden>ファイルから選ぶ</button>
   <input id="file" type="file" accept="image/*" hidden>
   <input id="file2" type="file" hidden>
   <button id="undo" title="元に戻す (Ctrl+Z)">元に戻す</button>
@@ -378,7 +378,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
   const MAX_PIXELS = IS_TOUCH ? 6e6 : 16e6;
   const UNDO_BYTES = IS_TOUCH ? 48e6 : 150e6;
-  const VERSION = '2026-10-10b';
+  const VERSION = '2026-10-10c';
   el('limitNote').textContent = '版 ' + VERSION + '　' + (IS_TOUCH
     ? 'スマホでは約600万画素（3000×2000程度）'
     : '約1600万画素（4900×3200程度）') + 'を超える画像は自動で縮小して読み込みます。保存される画像も縮小後のサイズになります。';
@@ -425,7 +425,6 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
       notice(info + ' を読み込めませんでした。' + msg, true);
     };
     dlog('読み込み開始 ' + info);
-    clearTimeout(pickTimer);
     status(info + ' を読み込み中…');
     notice(info + ' を読み込み中…');
     const timer = setTimeout(() => fail('時間がかかりすぎたため中止しました。画像が大きすぎる可能性があります。スクリーンショットなど小さい画像で試してください。'), 30000);
@@ -471,19 +470,34 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   // 選択画面から戻ってきたら印を消す（ページが読み込み直された場合は消されずに残る）
   document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(clearPick, 500); });
   window.addEventListener('focus', () => { dlog('focus'); setTimeout(clearPick, 500); });
-  let pickTimer = 0;
+  // Android の Chrome では、画像に絞った選択画面（accept="image/*"）だと機種によってギャラリーで選んだ
+  // 画像が渡ってこないことがあるため、Android では絞らない選択画面を使う
+  if (/Android/i.test(navigator.userAgent)) el('file').removeAttribute('accept');
+  // 選択画面から戻っても画像が届かなかったら、「ファイルから選ぶ」を出して案内する
+  let waitingPick = false;
+  const checkPickArrived = () => {
+    if (!waitingPick) return;
+    setTimeout(() => {
+      if (!waitingPick) return;
+      waitingPick = false;
+      dlog('選択画面から戻ったが画像が届かなかった');
+      el('open2').hidden = false;
+      notice('画像が受け取れませんでした。となりの「ファイルから選ぶ」から選び直してください。（選ぶのをやめた場合は、このお知らせは閉じてかまいません）');
+    }, 1500);
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkPickArrived(); });
+  window.addEventListener('focus', checkPickArrived);
   for (const [input, label, btn] of [[el('file'), '画像を開く', el('open')], [el('file2'), 'ファイルから選ぶ', el('open2')]]) {
     // ボタンから隠した画像選択の部品を呼び出す
     btn.addEventListener('click', () => { dlog(label + '（ボタン）'); input.click(); });
     input.addEventListener('click', () => {
       dlog(label + '（選択画面を開く）');
       try { sessionStorage.setItem(PICK_KEY, String(Date.now())); } catch (e) {}
-      // しばらくたっても画像が届かなければ、もう一方のボタンを案内する
-      clearTimeout(pickTimer);
-      if (input.id === 'file') {
-        pickTimer = setTimeout(() => notice('画像を選んでも何も起きない場合は、となりの「ファイルから選ぶ」から選んでください。一部のスマホでは、こちらでないと画像が受け取れません。'), 6000);
-      }
+      waitingPick = true;
     });
+    // 選ぶのをやめた場合（対応ブラウザのみ届く）は案内を出さない。ただし Android は画像が渡らない不具合でも
+    // cancel が届くことがあるので、そちらでは案内を残す
+    input.addEventListener('cancel', () => { dlog(label + ' cancel'); if (!/Android/i.test(navigator.userAgent)) waitingPick = false; });
     // 端末によって change と input のどちらが届くか違うことがあるので両方で受け取る（先に届いた方で処理）
     const onPick = ev => {
       const files = input.files;
@@ -492,7 +506,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
       clearPick();
       const f = files && files[0];
       if (!f) return;
-      clearTimeout(pickTimer);
+      waitingPick = false;
       input.value = '';
       if (!f.size) {
         notice('「' + (f.name || '画像') + '」の中身を受け取れませんでした（0 MB）。クラウドにだけある写真の可能性があります。いったん端末に保存してから選んでください。', true);
