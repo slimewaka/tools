@@ -40,9 +40,7 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-.filebtn { position: relative; overflow: hidden; }
-/* 画像選択の部品そのものを透明にしてボタン全体に重ねる（スマホで確実に反応させるため） */
-.filebtn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg); color: var(--ink); font: 14px/1.6 var(--sans);
@@ -166,7 +164,10 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 <header>
   <a class="back" href="../">← ツール一覧</a>
   <h1>背景透過ツール</h1>
-  <span class="btn primary filebtn">画像を開く<input id="file" type="file" accept="image/*" aria-label="画像を開く"></span>
+  <button id="open" class="primary">画像を開く</button>
+  <button id="open2" title="「画像を開く」で選んでも反映されないとき用">ファイルから選ぶ</button>
+  <input id="file" type="file" accept="image/*" hidden>
+  <input id="file2" type="file" hidden>
   <button id="undo" title="元に戻す (Ctrl+Z)">元に戻す</button>
   <button id="redo" title="やり直し (Ctrl+Y)">やり直し</button>
   <p id="limitNote" class="limit"></p>
@@ -377,7 +378,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
   const MAX_PIXELS = IS_TOUCH ? 6e6 : 16e6;
   const UNDO_BYTES = IS_TOUCH ? 48e6 : 150e6;
-  const VERSION = '2026-10-09c';
+  const VERSION = '2026-10-10b';
   el('limitNote').textContent = '版 ' + VERSION + '　' + (IS_TOUCH
     ? 'スマホでは約600万画素（3000×2000程度）'
     : '約1600万画素（4900×3200程度）') + 'を超える画像は自動で縮小して読み込みます。保存される画像も縮小後のサイズになります。';
@@ -424,6 +425,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
       notice(info + ' を読み込めませんでした。' + msg, true);
     };
     dlog('読み込み開始 ' + info);
+    clearTimeout(pickTimer);
     status(info + ' を読み込み中…');
     notice(info + ' を読み込み中…');
     const timer = setTimeout(() => fail('時間がかかりすぎたため中止しました。画像が大きすぎる可能性があります。スクリーンショットなど小さい画像で試してください。'), 30000);
@@ -463,30 +465,48 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   }
   // 画像選択中にスマホがメモリ不足でページを読み込み直したかを調べるため、選択中の印を残す
   const PICK_KEY = 'bg-remover-picking';
-  const fileEl = el('file');
-  fileEl.addEventListener('click', () => { dlog('画像を開くボタン（click）'); try { sessionStorage.setItem(PICK_KEY, String(Date.now())); } catch (e) {} });
-  fileEl.addEventListener('pointerdown', e => dlog('画像を開くボタン（' + e.pointerType + ' pointerdown）'));
+  // 「画像を開く」は画像に絞った選択画面、「ファイルから選ぶ」は絞らない選択画面（一部の Android で
+  // 画像に絞るとギャラリーから画像が渡ってこないことがあるため、その回り道）
   const clearPick = () => { try { sessionStorage.removeItem(PICK_KEY); } catch (e) {} };
   // 選択画面から戻ってきたら印を消す（ページが読み込み直された場合は消されずに残る）
   document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(clearPick, 500); });
-  window.addEventListener('focus', () => setTimeout(clearPick, 500));
-  // 端末によって change と input のどちらが届くか違うことがあるので両方で受け取る（先に届いた方で処理）
-  const onPick = ev => {
-    const files = fileEl.files;
-    dlog(ev.type + ' イベント: ファイル ' + (files ? files.length : 'なし') + ' 件' +
-      (files && files[0] ? '（' + files[0].name + '、' + (files[0].type || '形式不明') + '、' + files[0].size + ' バイト）' : ''));
-    clearPick();
-    const f = files && files[0];
-    if (!f) return;
-    fileEl.value = '';
-    if (!f.size) {
-      notice('「' + (f.name || '画像') + '」の中身を受け取れませんでした（0 MB）。クラウドにだけある写真の可能性があります。いったん端末に保存してから選んでください。', true);
-      return;
-    }
-    loadBlob(f, f.name || '画像');
-  };
-  fileEl.addEventListener('change', onPick);
-  fileEl.addEventListener('input', onPick);
+  window.addEventListener('focus', () => { dlog('focus'); setTimeout(clearPick, 500); });
+  let pickTimer = 0;
+  for (const [input, label, btn] of [[el('file'), '画像を開く', el('open')], [el('file2'), 'ファイルから選ぶ', el('open2')]]) {
+    // ボタンから隠した画像選択の部品を呼び出す
+    btn.addEventListener('click', () => { dlog(label + '（ボタン）'); input.click(); });
+    input.addEventListener('click', () => {
+      dlog(label + '（選択画面を開く）');
+      try { sessionStorage.setItem(PICK_KEY, String(Date.now())); } catch (e) {}
+      // しばらくたっても画像が届かなければ、もう一方のボタンを案内する
+      clearTimeout(pickTimer);
+      if (input.id === 'file') {
+        pickTimer = setTimeout(() => notice('画像を選んでも何も起きない場合は、となりの「ファイルから選ぶ」から選んでください。一部のスマホでは、こちらでないと画像が受け取れません。'), 6000);
+      }
+    });
+    // 端末によって change と input のどちらが届くか違うことがあるので両方で受け取る（先に届いた方で処理）
+    const onPick = ev => {
+      const files = input.files;
+      dlog(label + ' ' + ev.type + ' イベント: ファイル ' + (files ? files.length : 'なし') + ' 件' +
+        (files && files[0] ? '（' + files[0].name + '、' + (files[0].type || '形式不明') + '、' + files[0].size + ' バイト）' : ''));
+      clearPick();
+      const f = files && files[0];
+      if (!f) return;
+      clearTimeout(pickTimer);
+      input.value = '';
+      if (!f.size) {
+        notice('「' + (f.name || '画像') + '」の中身を受け取れませんでした（0 MB）。クラウドにだけある写真の可能性があります。いったん端末に保存してから選んでください。', true);
+        return;
+      }
+      if (f.type && !f.type.startsWith('image/')) {
+        notice('「' + f.name + '」は画像ではないようです（' + f.type + '）。PNG・JPEG・WebP・GIF・BMP の画像を選んでください。', true);
+        return;
+      }
+      loadBlob(f, f.name || '画像');
+    };
+    input.addEventListener('change', onPick);
+    input.addEventListener('input', onPick);
+  }
   let reloadedWhilePicking = false;
   try {
     const t = +sessionStorage.getItem(PICK_KEY);
