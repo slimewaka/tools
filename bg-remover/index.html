@@ -20,6 +20,8 @@
   --chk1: #ffffff;
   --chk2: #d6dbe0;
   --warn: #a23b16;
+  --note-bg: #fff3d6;
+  --note-line: #e3b54a;
   --sans: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
 }
@@ -27,10 +29,11 @@
   :root:not([data-theme="light"]) {
     --bg: #15181c; --panel: #1e2227; --ink: #e5e8eb; --muted: #98a2ac; --line: #343a42;
     --accent: #84a6ff; --accent-ink: #0c1322; --accent-soft: #24304a; --chk1: #2a2f35; --chk2: #3a4047;
-    --warn: #ff9d73; color-scheme: dark;
+    --warn: #ff9d73; --note-bg: #3a2f14; --note-line: #8a6a1f; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
+  --note-bg: #3a2f14; --note-line: #8a6a1f;
   --bg: #15181c; --panel: #1e2227; --ink: #e5e8eb; --muted: #98a2ac; --line: #343a42;
   --accent: #84a6ff; --accent-ink: #0c1322; --accent-soft: #24304a; --chk1: #2a2f35; --chk2: #3a4047;
   --warn: #ff9d73; color-scheme: dark;
@@ -47,6 +50,7 @@ header {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
 }
+header .limit { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--muted); }
 header h1 { font-size: 16px; margin: 0 auto 0 0; letter-spacing: .04em; }
 header .back { color: var(--muted); text-decoration: none; font-size: 13px; }
 header .back:hover { color: var(--accent); }
@@ -121,6 +125,15 @@ footer {
 footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 #status { margin-left: auto; color: var(--ink); }
 #status.err { color: var(--warn); }
+.notice {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 10px 16px; background: var(--note-bg); color: var(--ink);
+  border-bottom: 1px solid var(--note-line); font-size: 13px;
+}
+.notice p { margin: 0; flex: 1; min-width: 0; }
+.notice button { padding: 2px 10px; font-size: 12px; flex: none; }
+.savesize { font-size: 13px; margin: 0; font-variant-numeric: tabular-nums; }
+.savesize.shrunk { color: var(--warn); }
 .kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 
 @media (max-width: 820px) {
@@ -141,6 +154,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   <input id="file" class="vh" type="file" accept="image/*">
   <button id="undo" title="元に戻す (Ctrl+Z)">元に戻す</button>
   <button id="redo" title="やり直し (Ctrl+Y)">やり直し</button>
+  <p id="limitNote" class="limit"></p>
 </header>
 
 <div class="app">
@@ -221,6 +235,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
         <input id="trimPad" type="number" min="0" max="500" value="0"></label>
       <label class="field">ファイル名
         <input id="fname" type="text" value="sample_nobg"></label>
+      <p id="saveSize" class="savesize"></p>
       <button id="save" class="primary">保存する</button>
     </section>
 
@@ -230,10 +245,15 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
       <span class="kbd">W</span> 範囲クリック ／ <span class="kbd">G</span> 同色一括 ／ <span class="kbd">E</span> 消しゴム ／ <span class="kbd">R</span> 復元<br>
       <span class="kbd">[</span> <span class="kbd">]</span> ブラシサイズ ／ <span class="kbd">Ctrl</span>+ホイール 拡大縮小<br>
       画像は外部に送信されず、すべてブラウザ内で処理されます。</p>
+      <p class="hint"><b>大きい画像は自動で縮小されます。</b>上限はスマホで約600万画素（3000×2000程度）、パソコンで約1600万画素（4900×3200程度）です。縮小した場合は保存される画像も縮小後のサイズになります。元の大きさのまま保存したいときはパソコンで使ってください。</p>
     </section>
   </aside>
 
   <main>
+    <div id="notice" class="notice" role="status" hidden>
+      <p id="noticeText"></p>
+      <button id="noticeClose" aria-label="お知らせを閉じる">閉じる</button>
+    </div>
     <div id="stage">
       <div class="pad"><div id="wrap" class="checker"><canvas id="view" class="pick"></canvas><div id="cursor" hidden></div></div></div>
     </div>
@@ -263,6 +283,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   let zoom = 1;
   let tool = 'wand';
   let undoStack = [], redoStack = [];
+  let origSize = null; // 縮小して読み込んだときの元のサイズ [幅, 高さ]
 
   const el = id => document.getElementById(id);
   const tolEl = el('tol'), softEl = el('soft'), sizeEl = el('size'), hardEl = el('hard');
@@ -271,6 +292,22 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   // ---------- 状態表示 ----------
   function status(msg, isErr) {
     const s = el('status'); s.textContent = msg; s.classList.toggle('err', !!isErr);
+  }
+  const fmtSize = (w, h) => w + '×' + h;
+  function showShrinkNotice() {
+    const n = el('notice');
+    if (!origSize) { n.hidden = true; return; }
+    el('noticeText').textContent = '大きい画像のため ' + fmtSize(origSize[0], origSize[1]) + ' から ' + fmtSize(W, H) +
+      ' に縮小して読み込みました。保存される画像もこのサイズになります。元の大きさで保存したいときはパソコンで開いてください。';
+    n.hidden = false;
+  }
+  function updateSaveSize() {
+    const p = el('saveSize');
+    let t = '保存サイズ: ' + fmtSize(W, H);
+    if (el('trim').checked) t += '（余白を切り詰めるとさらに小さくなります）';
+    if (origSize) t += '　※元の画像 ' + fmtSize(origSize[0], origSize[1]) + ' から縮小されています';
+    p.textContent = t;
+    p.classList.toggle('shrunk', !!origSize);
   }
   function updateInfo() {
     el('dim').textContent = W + '×' + H;
@@ -289,6 +326,9 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
   const MAX_PIXELS = IS_TOUCH ? 6e6 : 16e6;
   const UNDO_BYTES = IS_TOUCH ? 48e6 : 150e6;
+  el('limitNote').textContent = (IS_TOUCH
+    ? 'スマホでは約600万画素（3000×2000程度）'
+    : '約1600万画素（4900×3200程度）') + 'を超える画像は自動で縮小して読み込みます。保存される画像も縮小後のサイズになります。';
 
   // 大きすぎる画像は縮小して読み込む。縮小した場合は元のサイズを返す
   function setImage(img, name) {
@@ -312,7 +352,10 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     outImg = vctx.createImageData(W, H);
     el('fname').value = name.replace(/\.[^.]+$/, '') + '_nobg';
     render(); fit(); updateInfo();
-    return scale < 1 ? [ow, oh] : null;
+    origSize = scale < 1 ? [ow, oh] : null;
+    showShrinkNotice();
+    updateSaveSize();
+    return origSize;
   }
   let loading = false;
   function loadBlob(blob, name) {
@@ -383,6 +426,8 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     vctx.putImageData(outImg, 0, 0, x0, y0, x1 - x0, y1 - y0);
   }
   deconEl.addEventListener('change', () => render());
+  el('noticeClose').addEventListener('click', () => { el('notice').hidden = true; });
+  el('trim').addEventListener('change', updateSaveSize);
 
   // ---------- 元に戻す ----------
   function pushUndo() {
@@ -774,7 +819,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
       else if (fmt === 'tga') { blob = encodeTGA(fillTransparent(px)); ext = 'tga'; }
       else { blob = await encodeICO(px); ext = 'ico'; }
       download(blob, base + '.' + ext);
-      status(base + '.' + ext + ' を保存しました（' + px.w + '×' + px.h + '、' + (blob.size / 1024).toFixed(0) + ' KB）。');
+      status(base + '.' + ext + ' を保存しました（' + px.w + '×' + px.h + '、' + (blob.size / 1024).toFixed(0) + ' KB）。' + (origSize ? '元の画像 ' + fmtSize(origSize[0], origSize[1]) + ' より縮小されたサイズです。' : ''));
     } catch (err) {
       status('保存できませんでした: ' + err.message, true);
     }
