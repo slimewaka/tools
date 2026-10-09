@@ -182,7 +182,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
       <h2>1. 背景を消す</h2>
       <div class="ai">
         <button id="aiRun" class="primary">AIで背景を消す</button>
-        <p class="hint" id="aiHint">人物・物・動物などをAIが見分けて背景を消します。背景が複雑な写真やイラスト向けです。初回だけAIのデータ（約120MB）をダウンロードします。パソコンで30秒〜1分ほどかかります。</p>
+        <p class="hint" id="aiHint">人物・物・動物などをAIが見分けて背景を消します。背景が複雑な写真やイラスト向けです。初回だけAIのデータ（約120MB）をダウンロードします。30秒〜1分ほどかかります（スマホでも少し長くなる程度です）。</p>
         <div id="aiConfirm" hidden>
           <p class="hint"><b>AIのデータ（約120MB）をダウンロードします。</b>モバイル回線では通信量がかかるので、Wi-Fiでの利用をおすすめします。2回目からはこの端末に保存したデータを使います。<span id="aiMemWarn"></span></p>
           <div class="row"><button id="aiYes" class="primary">ダウンロードして実行</button><button id="aiNo">やめる</button></div>
@@ -391,7 +391,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
   const MAX_PIXELS = IS_TOUCH ? 6e6 : 16e6;
   const UNDO_BYTES = IS_TOUCH ? 48e6 : 150e6;
-  const VERSION = '2026-10-12';
+  const VERSION = '2026-10-13';
   el('limitNote').textContent = '版 ' + VERSION + '　' + (IS_TOUCH
     ? 'スマホでは約600万画素（3000×2000程度）'
     : '約1600万画素（4900×3200程度）') + 'を超える画像は自動で縮小して読み込みます。保存される画像も縮小後のサイズになります。';
@@ -908,7 +908,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
       for (let i = 0; i < N; i++) for (let ch = 0; ch < 3; ch++) input[ch * N + i] = (px[i * 4 + ch] / 255 - mean[ch]) / std[ch];
       prog.removeAttribute('value');
       const t0 = Date.now();
-      const tick = setInterval(() => notice('AIが背景を判定中…（' + Math.round((Date.now() - t0) / 1000) + '秒経過。パソコンで30秒〜1分ほどかかります）'), 1000);
+      const tick = setInterval(() => notice('AIが背景を判定中…（' + Math.round((Date.now() - t0) / 1000) + '秒経過。30秒〜1分ほどかかります）'), 1000);
       notice('AIが背景を判定中…');
       let y;
       aiUsed = true;
