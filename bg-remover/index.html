@@ -391,7 +391,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
   const MAX_PIXELS = IS_TOUCH ? 6e6 : 16e6;
   const UNDO_BYTES = IS_TOUCH ? 48e6 : 150e6;
-  const VERSION = '2026-10-11';
+  const VERSION = '2026-10-12';
   el('limitNote').textContent = '版 ' + VERSION + '　' + (IS_TOUCH
     ? 'スマホでは約600万画素（3000×2000程度）'
     : '約1600万画素（4900×3200程度）') + 'を超える画像は自動で縮小して読み込みます。保存される画像も縮小後のサイズになります。';
@@ -486,6 +486,16 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   // Android の Chrome では、画像に絞った選択画面（accept="image/*"）だと機種によってギャラリーで選んだ
   // 画像が渡ってこないことがあるため、Android では絞らない選択画面を使う
   if (/Android/i.test(navigator.userAgent)) el('file').removeAttribute('accept');
+  // スマホでは AI を使ったあと、メモリが足りずに選んだ画像がページに届かなくなる（Android 10 + Chrome で確認。
+  // ページを開き直すと選べる）。AI を使ったあとに画像を開こうとしたら、先にページを開き直してもらう
+  let aiUsed = false;
+  const REOPEN_KEY = 'bg-remover-reopen';
+  function askReopen() {
+    if (!confirm('AIを使ったあとは、スマホのメモリが足りず、画像を選んでも届かないことがあります。\n' +
+                 'ページを開き直してから選んでください。\n\n今の画像は消えます（必要なら先に保存してください）。\n\n開き直しますか？')) return;
+    try { sessionStorage.setItem(REOPEN_KEY, '1'); } catch (e) {}
+    location.reload();
+  }
   // 選択画面から戻っても画像が届かなかったら、「ファイルから選ぶ」を出して案内する
   let waitingPick = false;
   const checkPickArrived = () => {
@@ -502,7 +512,11 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   window.addEventListener('focus', checkPickArrived);
   for (const [input, label, btn] of [[el('file'), '画像を開く', el('open')], [el('file2'), 'ファイルから選ぶ', el('open2')]]) {
     // ボタンから隠した画像選択の部品を呼び出す
-    btn.addEventListener('click', () => { dlog(label + '（ボタン）'); input.click(); });
+    btn.addEventListener('click', () => {
+      dlog(label + '（ボタン）');
+      if (aiUsed && IS_TOUCH) { askReopen(); return; }
+      input.click();
+    });
     input.addEventListener('click', () => {
       dlog(label + '（選択画面を開く）');
       try { sessionStorage.setItem(PICK_KEY, String(Date.now())); } catch (e) {}
@@ -897,6 +911,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
       const tick = setInterval(() => notice('AIが背景を判定中…（' + Math.round((Date.now() - t0) / 1000) + '秒経過。パソコンで30秒〜1分ほどかかります）'), 1000);
       notice('AIが背景を判定中…');
       let y;
+      aiUsed = true;
       try { y = await aiInfer(model, input, size); } finally { clearInterval(tick); }
       dlog('AI 計算 ' + Math.round((Date.now() - t0) / 1000) + '秒');
       // シグモイドで 0〜1 にし、最小・最大で引き伸ばしてから元の大きさに拡大する
@@ -1266,7 +1281,10 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     const img = new Image();
     img.onload = () => {
       setImage(img, 'sample.png');
-      if (reloadedWhilePicking) {
+      let reopened = false;
+      try { reopened = !!sessionStorage.getItem(REOPEN_KEY); sessionStorage.removeItem(REOPEN_KEY); } catch (e) {}
+      if (reopened) notice('ページを開き直しました。「画像を開く」から画像を選んでください。');
+      else if (reloadedWhilePicking) {
         notice('画像を選んでいる間に、ブラウザがこのページを最初から読み込み直したため、選んだ画像が受け取れませんでした。スマホのメモリが足りないときに起こります。他のアプリやブラウザのタブを閉じてから、もう一度「画像を開く」を押してください。', true);
       }
     };
