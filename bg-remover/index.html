@@ -268,6 +268,18 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
         <span>透明な余白を切り詰める</span></label>
       <label class="field">切り詰め後に残す余白（px）
         <input id="trimPad" type="number" min="0" max="500" value="0"></label>
+      <label class="check"><input id="resize" type="checkbox">
+        <span>大きさを変えて保存する</span></label>
+      <div id="resizeBox" class="row" hidden>
+        <select id="resizeBy" aria-label="大きさの決め方">
+          <option value="pct">割合（%）</option>
+          <option value="w">幅（px）</option>
+          <option value="h">高さ（px）</option>
+          <option value="long">長い辺（px）</option>
+        </select>
+        <input id="resizeVal" type="number" min="1" max="16384" value="50" aria-label="大きさの値" style="width:7em">
+      </div>
+      <p id="resizeHint" class="hint" hidden>縦横の比率はそのままで、もう片方の長さは自動で決まります。</p>
       <label class="field">ファイル名
         <input id="fname" type="text" value="sample_nobg"></label>
       <p id="saveSize" class="savesize"></p>
@@ -368,8 +380,10 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   window.addEventListener('unhandledrejection', e => notice('エラーが発生しました: ' + ((e.reason && e.reason.message) || e.reason || '不明なエラー'), true));
   function updateSaveSize() {
     const p = el('saveSize');
-    let t = '保存サイズ: ' + fmtSize(W, H);
-    if (el('trim').checked) t += '（余白を切り詰めるとさらに小さくなります）';
+    if (!src) return;
+    const b = cropBox(), [w2, h2] = outSize(b.w, b.h);
+    let t = '保存サイズ: ' + fmtSize(w2, h2);
+    if (w2 !== b.w || h2 !== b.h) t += '（' + fmtSize(b.w, b.h) + ' から変更）';
     if (origSize) t += '　※元の画像 ' + fmtSize(origSize[0], origSize[1]) + ' から縮小されています';
     p.textContent = t;
     p.classList.toggle('shrunk', !!origSize);
@@ -381,6 +395,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     el('ratio').textContent = (t / mask.length * 100).toFixed(1) + '%';
     el('undo').disabled = !undoStack.length;
     el('redo').disabled = !redoStack.length;
+    if (el('trim').checked) updateSaveSize();
   }
   for (const id of ['tol', 'soft', 'size', 'hard']) {
     el(id).addEventListener('input', () => { el(id + 'Out').textContent = el(id).value; updateCursorSize(); });
@@ -391,7 +406,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
   const MAX_PIXELS = IS_TOUCH ? 6e6 : 16e6;
   const UNDO_BYTES = IS_TOUCH ? 48e6 : 150e6;
-  const VERSION = '2026-10-13';
+  const VERSION = '2026-10-14';
   el('limitNote').textContent = '版 ' + VERSION + '　' + (IS_TOUCH
     ? 'スマホでは約600万画素（3000×2000程度）'
     : '約1600万画素（4900×3200程度）') + 'を超える画像は自動で縮小して読み込みます。保存される画像も縮小後のサイズになります。';
@@ -597,6 +612,18 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   deconEl.addEventListener('change', () => render());
   el('noticeClose').addEventListener('click', () => { el('notice').hidden = true; });
   el('trim').addEventListener('change', updateSaveSize);
+  el('trimPad').addEventListener('input', updateSaveSize);
+  el('resize').addEventListener('change', () => {
+    el('resizeBox').hidden = el('resizeHint').hidden = !el('resize').checked;
+    updateSaveSize();
+  });
+  // 決め方を切り替えたら、今の大きさを初期値にする（割合は 50%）
+  el('resizeBy').addEventListener('change', () => {
+    const b = cropBox(), by = el('resizeBy').value;
+    el('resizeVal').value = by === 'pct' ? 50 : by === 'w' ? b.w : by === 'h' ? b.h : Math.max(b.w, b.h);
+    updateSaveSize();
+  });
+  el('resizeVal').addEventListener('input', updateSaveSize);
 
   // ---------- 元に戻す ----------
   function pushUndo() {
@@ -1133,7 +1160,8 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   });
 
   // ---------- 書き出し ----------
-  function finalPixels() {
+  // 書き出す範囲（余白を切り詰める場合は、見えている部分を囲む範囲＋残す余白）
+  function cropBox() {
     let x0 = 0, y0 = 0, x1 = W, y1 = H;
     if (el('trim').checked) {
       x0 = W; y0 = H; x1 = 0; y1 = 0;
@@ -1144,7 +1172,38 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
       if (x1 <= x0) { x0 = 0; y0 = 0; x1 = 1; y1 = 1; }
     }
     const pad = el('trim').checked ? Math.max(0, +el('trimPad').value | 0) : 0;
-    const w = x1 - x0 + pad * 2, h = y1 - y0 + pad * 2;
+    return { x0, y0, x1, y1, pad, w: x1 - x0 + pad * 2, h: y1 - y0 + pad * 2 };
+  }
+  // 「大きさを変えて保存する」の指定から、保存する幅と高さを求める（縦横の比率は保つ。1辺は最大 16384px）
+  function outSize(w, h) {
+    const v = +el('resizeVal').value;
+    if (!el('resize').checked || !(v > 0)) return [w, h];
+    const by = el('resizeBy').value;
+    let s = by === 'pct' ? v / 100 : by === 'w' ? v / w : by === 'h' ? v / h : v / Math.max(w, h);
+    s = Math.min(s, 16384 / Math.max(w, h));
+    return [Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s))];
+  }
+  // 大きさを変える。大きく縮めるときは半分ずつ縮めて、細かい線がつぶれたりギザギザになったりするのを防ぐ
+  function resizePixels(px, w2, h2) {
+    if (w2 === px.w && h2 === px.h) return px;
+    let c = toCanvas(px);
+    while (c.width / 2 >= w2 && c.height / 2 >= h2) {
+      const n = document.createElement('canvas');
+      n.width = Math.round(c.width / 2); n.height = Math.round(c.height / 2);
+      const g = n.getContext('2d'); g.imageSmoothingQuality = 'high';
+      g.drawImage(c, 0, 0, n.width, n.height);
+      c.width = c.height = 0; c = n;
+    }
+    const o = document.createElement('canvas'); o.width = w2; o.height = h2;
+    const g = o.getContext('2d', { willReadFrequently: true }); g.imageSmoothingQuality = 'high';
+    g.drawImage(c, 0, 0, w2, h2);
+    c.width = c.height = 0;
+    const data = g.getImageData(0, 0, w2, h2).data;
+    o.width = o.height = 0;
+    return { data, w: w2, h: h2 };
+  }
+  function finalPixels() {
+    const { x0, y0, x1, y1, pad, w, h } = cropBox();
     const data = new Uint8ClampedArray(w * h * 4); // 余白は (0,0,0,0)
     const k = deconEl.checked ? keyColor : null;
     for (let y = y0; y < y1; y++) {
@@ -1152,7 +1211,8 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
         composeInto(data, ((y - y0 + pad) * w + (x - x0 + pad)) * 4, y * W + x, k);
       }
     }
-    return { data, w, h };
+    const [w2, h2] = outSize(w, h);
+    return resizePixels({ data, w, h }, w2, h2);
   }
   function fillTransparent(px) {
     const f = el('fill').value;
