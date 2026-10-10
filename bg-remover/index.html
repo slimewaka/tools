@@ -406,7 +406,7 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
   const MAX_PIXELS = IS_TOUCH ? 6e6 : 16e6;
   const UNDO_BYTES = IS_TOUCH ? 48e6 : 150e6;
-  const VERSION = '2026-10-14';
+  const VERSION = '2026-10-15';
   el('limitNote').textContent = '版 ' + VERSION + '　' + (IS_TOUCH
     ? 'スマホでは約600万画素（3000×2000程度）'
     : '約1600万画素（4900×3200程度）') + 'を超える画像は自動で縮小して読み込みます。保存される画像も縮小後のサイズになります。';
@@ -475,20 +475,99 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
         if (img.close) img.close();
       }, 30);
     };
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => { dlog('画像デコード完了 ' + img.naturalWidth + '×' + img.naturalHeight); URL.revokeObjectURL(url); finish(img); };
-    img.onerror = () => {
-      dlog('img.onerror');
-      URL.revokeObjectURL(url);
-      // <img> で読めない場合は別の方法でもう一度試す
-      if (window.createImageBitmap) {
-        createImageBitmap(blob).then(finish, () => fail('この形式には対応していません。PNG・JPEG・WebP・GIF・BMP のいずれかを選んでください。'));
-      } else {
-        fail('この形式には対応していません。PNG・JPEG・WebP・GIF・BMP のいずれかを選んでください。');
+    // BMP（32bit）と TGA はブラウザに任せると透明が消えたり開けなかったりするので、自前で読む
+    readOwnFormat(blob).then(c => {
+      if (token !== loadToken) return;
+      if (c) { dlog('自前で読み込み ' + c.width + '×' + c.height); finish(c); }
+      else readByBrowser();
+    }, err => fail(err.message));
+    function readByBrowser() {
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => { dlog('画像デコード完了 ' + img.naturalWidth + '×' + img.naturalHeight); URL.revokeObjectURL(url); finish(img); };
+      img.onerror = () => {
+        dlog('img.onerror');
+        URL.revokeObjectURL(url);
+        // <img> で読めない場合は別の方法でもう一度試す
+        if (window.createImageBitmap) {
+          createImageBitmap(blob).then(finish, () => fail('この形式には対応していません。PNG・JPEG・WebP・GIF・BMP・TGA のいずれかを選んでください。'));
+        } else {
+          fail('この形式には対応していません。PNG・JPEG・WebP・GIF・BMP・TGA のいずれかを選んでください。');
+        }
+      };
+      img.src = url;
+    }
+  }
+  // BMP（32bit）・TGA を読む。対象外の形式なら null を返し、ブラウザに任せる
+  async function readOwnFormat(blob) {
+    const head = new Uint8Array(await blob.slice(0, 18).arrayBuffer());
+    const isBMP = head[0] === 0x42 && head[1] === 0x4D;
+    const isTGA = !isBMP && (/\.tga$/i.test(blob.name || '') || blob.type === 'image/x-tga' ||
+      ([2, 10].includes(head[2]) && head[1] === 0 && [24, 32].includes(head[16])));
+    if (isBMP) {
+      if (head.length < 18) return null;
+      const u8 = new Uint8Array(await blob.arrayBuffer()), dv = new DataView(u8.buffer);
+      const off = dv.getUint32(10, true), hs = dv.getUint32(14, true);
+      if (hs < 40) return null;
+      const w = dv.getInt32(18, true), hRaw = dv.getInt32(22, true), bpp = dv.getUint16(28, true), comp = dv.getUint32(30, true);
+      if (bpp !== 32 || !(comp === 0 || comp === 3) || w <= 0 || !hRaw) return null;
+      const h = Math.abs(hRaw), top = hRaw < 0;
+      let mr = 0x00FF0000, mg = 0x0000FF00, mb = 0x000000FF, ma = 0xFF000000;
+      if (comp === 3) {
+        const mo = hs >= 52 ? 54 : 14 + hs; // V4/V5 ヘッダの中、なければヘッダの後ろ
+        mr = dv.getUint32(mo, true); mg = dv.getUint32(mo + 4, true); mb = dv.getUint32(mo + 8, true);
+        ma = hs >= 56 ? dv.getUint32(66, true) : 0;
       }
-    };
-    img.src = url;
+      if (off + w * h * 4 > u8.length) throw new Error('BMP ファイルが途中で切れているようです。');
+      const shift = m => { let n = 0; if (!m) return 0; while (!((m >>> n) & 1)) n++; return n; };
+      const ch = m => { const sh = shift(m), mx = m >>> sh; return v => mx ? Math.round(((v & m) >>> sh) * 255 / mx) : 0; };
+      const R = ch(mr), G = ch(mg), B = ch(mb), A = ch(ma);
+      const img = new ImageData(w, h), d = img.data;
+      let anyAlpha = false;
+      for (let y = 0; y < h; y++) {
+        const sy = top ? y : h - 1 - y;
+        for (let x = 0; x < w; x++) {
+          const v = dv.getUint32(off + (sy * w + x) * 4, true), p = (y * w + x) * 4;
+          d[p] = R(v); d[p + 1] = G(v); d[p + 2] = B(v);
+          const a = ma ? A(v) : (v >>> 24);
+          d[p + 3] = a; if (a) anyAlpha = true;
+        }
+      }
+      // 透明の情報が全部 0 のときは「透明の情報なし」とみなして不透明にする（古いソフトの BMP によくある）
+      if (!anyAlpha) for (let p = 3; p < d.length; p += 4) d[p] = 255;
+      return toCanvasFrom(img);
+    }
+    if (isTGA) {
+      const u8 = new Uint8Array(await blob.arrayBuffer());
+      const idLen = u8[0], type = u8[2], w = u8[12] | u8[13] << 8, h = u8[14] | u8[15] << 8, bpp = u8[16], desc = u8[17];
+      if (u8[1] !== 0 || ![2, 10].includes(type) || ![24, 32].includes(bpp) || !w || !h) {
+        throw new Error('この TGA の形式には対応していません（フルカラーの TGA だけ読めます）。');
+      }
+      const bp = bpp / 8, n = w * h, raw = new Uint8Array(n * bp);
+      let s = 18 + idLen;
+      if (type === 2) raw.set(u8.subarray(s, s + n * bp));
+      else for (let o = 0; o < raw.length && s < u8.length;) { // RLE 圧縮
+        const c = u8[s++], cnt = (c & 127) + 1;
+        if (c & 128) { for (let k = 0; k < cnt; k++, o += bp) raw.set(u8.subarray(s, s + bp), o); s += bp; }
+        else { raw.set(u8.subarray(s, s + cnt * bp), o); s += cnt * bp; o += cnt * bp; }
+      }
+      const img = new ImageData(w, h), d = img.data, topDown = desc & 0x20, rightLeft = desc & 0x10;
+      let anyAlpha = false;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const sy = topDown ? y : h - 1 - y, sx = rightLeft ? w - 1 - x : x;
+        const q = (sy * w + sx) * bp, p = (y * w + x) * 4;
+        d[p] = raw[q + 2]; d[p + 1] = raw[q + 1]; d[p + 2] = raw[q];
+        d[p + 3] = bp === 4 ? raw[q + 3] : 255; if (d[p + 3]) anyAlpha = true;
+      }
+      if (!anyAlpha) for (let p = 3; p < d.length; p += 4) d[p] = 255;
+      return toCanvasFrom(img);
+    }
+    return null;
+  }
+  function toCanvasFrom(img) {
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    c.getContext('2d').putImageData(img, 0, 0);
+    return c;
   }
   // 画像選択中にスマホがメモリ不足でページを読み込み直したかを調べるため、選択中の印を残す
   const PICK_KEY = 'bg-remover-picking';
@@ -554,8 +633,8 @@ footer .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
         notice('「' + (f.name || '画像') + '」の中身を受け取れませんでした（0 MB）。クラウドにだけある写真の可能性があります。いったん端末に保存してから選んでください。', true);
         return;
       }
-      if (f.type && !f.type.startsWith('image/')) {
-        notice('「' + f.name + '」は画像ではないようです（' + f.type + '）。PNG・JPEG・WebP・GIF・BMP の画像を選んでください。', true);
+      if (f.type && !f.type.startsWith('image/') && !/\.(bmp|tga)$/i.test(f.name)) {
+        notice('「' + f.name + '」は画像ではないようです（' + f.type + '）。PNG・JPEG・WebP・GIF・BMP・TGA の画像を選んでください。', true);
         return;
       }
       loadBlob(f, f.name || '画像');
