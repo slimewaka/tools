@@ -138,10 +138,16 @@ button.btn { border: 0; font: inherit; font-weight: 700; cursor: pointer; }
   };
   document.getElementById('copyUrl').addEventListener('click', copy);
   // ダウンロードボタンを押しても反応しないので、代わりにコピーして案内まで戻す
+  // まず「新しい画面で開く」を試す（外のブラウザに渡すアプリもある）。
+  // 1.5秒たってもこのページが表に出たままなら、開けなかったとみなしてコピーの案内にする
   document.getElementById('dl').addEventListener('click', function (e) {
     e.preventDefault();
-    copy();
-    document.getElementById('inapp').scrollIntoView({ behavior: 'smooth' });
+    try { window.open(ext, '_blank'); } catch (err) { }
+    setTimeout(function () {
+      if (document.hidden) return;
+      copy();
+      document.getElementById('inapp').scrollIntoView({ behavior: 'smooth' });
+    }, 1500);
   });
 })();
 </script>
