@@ -49,22 +49,19 @@ footer { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line)
 .inapp.show { display: block; }
 .inapp p { margin: 0 0 10px; }
 button.btn { border: 0; font: inherit; font-weight: 700; cursor: pointer; }
-.inapp .steps { margin: 0 0 12px; }
+.inapp .big { font-size: 16px; }
 .inapp .copied { margin: 10px 0 0; font-weight: 700; }
-.inapp .small { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.inapp .small { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="inapp" id="inapp">
-    <p><strong>X・LINEなどのアプリの中で開いています。</strong>ここではダウンロードできないので、Chromeで開き直してください。</p>
-    <ol class="steps">
-      <li>下の「アドレスをコピー」を押す</li>
-      <li>Chromeを開き、上のアドレス欄に貼り付けて開く</li>
-    </ol>
+    <p><strong>X・LINEなどのアプリの中で開いています。</strong>ここではダウンロードできません。</p>
+    <p class="big">画面の上か下にある<strong>「ブラウザで開く」</strong>を押してください。<br>見当たらないときは、右上の「︙」や「…」のメニューの中にあります。</p>
+    <p class="small">それでも開けないときは、アドレスをコピーして、Chromeのアドレス欄に貼り付けてください。</p>
     <button type="button" class="btn" id="copyUrl">アドレスをコピー</button>
     <p class="copied" id="copied" hidden>✅ コピーしました。Chromeを開いて、アドレス欄に貼り付けてください。</p>
-    <p class="small">画面の右上か右下にある「︙」や「…」のメニューに「ブラウザで開く」があれば、それでも開けます。</p>
   </div>
   <header>
     <a class="back" href="../">← ツール一覧</a>
@@ -86,7 +83,7 @@ button.btn { border: 0; font: inherit; font-weight: 700; cursor: pointer; }
   <section class="card">
     <h2>入れ方</h2>
     <ol>
-      <li>Androidスマホでこのページを開き、「アプリをダウンロード」を押します。</li>
+      <li>Androidスマホでこのページを開き、「アプリをダウンロード」を押します。X や LINE から開いたときは、先に「ブラウザで開く」でChromeに切り替えてください（アプリの中ではダウンロードできません）。</li>
       <li>ダウンロードが終わったら、通知か「ファイル」アプリから開きます。開くアプリを選ぶ画面が出たら、<strong>「パッケージ インストーラ」</strong>を選びます（「ファイルマネージャ」ではインストールできません）。</li>
       <li>「提供元不明のアプリ」と出たら「設定」を押し、「この提供元を許可」をオンにして戻ります。</li>
       <li>「インストール」を押します。「Playプロテクト」の警告が出たら「詳細」→「インストールする」を選びます（Google Play を通さないアプリなので出ることがあります）。</li>
@@ -138,16 +135,11 @@ button.btn { border: 0; font: inherit; font-weight: 700; cursor: pointer; }
   };
   document.getElementById('copyUrl').addEventListener('click', copy);
   // ダウンロードボタンを押しても反応しないので、代わりにコピーして案内まで戻す
-  // まず「新しい画面で開く」を試す（外のブラウザに渡すアプリもある）。
-  // 1.5秒たってもこのページが表に出たままなら、開けなかったとみなしてコピーの案内にする
+  // ここではダウンロードボタンが反応しないので、押されたら上の案内まで戻す
+  // （X では window.open・intent://・googlechrome:// のどれでも Chrome を開けなかった。X の「ブラウザで開く」なら開ける）
   document.getElementById('dl').addEventListener('click', function (e) {
     e.preventDefault();
-    try { window.open(ext, '_blank'); } catch (err) { }
-    setTimeout(function () {
-      if (document.hidden) return;
-      copy();
-      document.getElementById('inapp').scrollIntoView({ behavior: 'smooth' });
-    }, 1500);
+    document.getElementById('inapp').scrollIntoView({ behavior: 'smooth' });
   });
 })();
 </script>
