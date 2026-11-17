@@ -48,6 +48,8 @@ footer { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line)
 .inapp { display: none; background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 10px; padding: 16px 20px; }
 .inapp.show { display: block; }
 .inapp p { margin: 0 0 10px; }
+.inapp-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn-sub { background: transparent; color: var(--accent); border: 1px solid var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
 .inapp .small { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
 </style>
 </head>
@@ -55,8 +57,12 @@ footer { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line)
 <div class="wrap">
   <div class="inapp" id="inapp">
     <p><strong>LINEなどのアプリの中で開いています。</strong>このままではダウンロードできないことがあるので、Chromeで開いてください。</p>
-    <a class="btn" id="openChrome" href="#">Chromeで開く</a>
-    <p class="small">開かないときは、画面の右上か右下にある「︙」や「…」のメニューから「ブラウザで開く」を選んでください。</p>
+    <div class="inapp-btns">
+      <a class="btn" id="openChrome" href="#">Chromeで開く</a>
+      <button type="button" class="btn btn-sub" id="copyUrl">アドレスをコピー</button>
+    </div>
+    <p class="small" id="copied" hidden>コピーしました。Chromeを開いて、上のアドレス欄に貼り付けてください。</p>
+    <p class="small">開かないときは、画面の右上か右下にある「︙」や「…」のメニューから「ブラウザで開く」を選ぶか、「アドレスをコピー」を押してChromeに貼り付けてください。</p>
   </div>
   <header>
     <a class="back" href="../">← ツール一覧</a>
@@ -118,12 +124,18 @@ footer { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line)
   if (isLine && location.search.indexOf('openExternalBrowser') < 0) { location.replace(ext); return; }
   document.getElementById('inapp').classList.add('show');
   var a = document.getElementById('openChrome');
-  if (/Android/i.test(ua)) {
-    a.href = 'intent://' + location.host + location.pathname +
-      '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' + encodeURIComponent(ext) + ';end';
-  } else {
-    a.href = ext;
-  }
+  // X などの中のブラウザは intent:// を扱えないので、Chrome 専用の googlechrome:// で呼び出す
+  a.href = /Android/i.test(ua) ? 'googlechrome://navigate?url=' + encodeURIComponent(page) : ext;
+  document.getElementById('copyUrl').addEventListener('click', function () {
+    var done = function () { document.getElementById('copied').hidden = false; };
+    var fallback = function () {
+      var t = document.createElement('textarea');
+      t.value = page; document.body.appendChild(t); t.select();
+      try { document.execCommand('copy'); done(); } catch (e) { prompt('このアドレスをコピーしてください', page); }
+      t.remove();
+    };
+    if (navigator.clipboard) navigator.clipboard.writeText(page).then(done, fallback); else fallback();
+  });
 })();
 </script>
 </body>
