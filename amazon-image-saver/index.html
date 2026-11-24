@@ -40,7 +40,9 @@
   <section>
     <h2>できること</h2>
     Amazon の商品ページで押すと、<b>商品名のフォルダ</b>を作り、その中に商品の画像（大きいサイズ）を
-    <code>1.jpg</code>、<code>2.jpg</code>、<code>3.jpg</code>… と順番に名前を付けて保存します。
+    <code>1.jpg</code>、<code>2.jpg</code>、<code>3.jpg</code>… と順番に名前を付けて保存します。<br>
+    同じフォルダに、メルカリ・ヤフオクの出品に使える説明文（<code>商品説明.txt</code>）も作ります。1行目は商品名です。<br>
+    前に買ったことがある商品（ページに「最後にこの商品を購入したのは2026年11月21日です。」と出るもの）は、商品名の後ろに <code> 1121</code> のように購入した月日を付けます。
   </section>
 
   <section>
@@ -76,21 +78,22 @@
       ・ブラウザを開き直したあとは「ファイルの編集を許可しますか」と聞かれることがあります。「許可」（「毎回許可する」があればそちら）を押してください。<br>
       ・保存先を変えたいときは、右下の画面の「保存先を変える」を押します。<br>
       ・「ダウンロードにそのまま保存」を押すと、フォルダを作らずにダウンロードフォルダへ保存します（初回は「複数ファイルのダウンロード」の確認で「許可」）。<br>
+      ・<code>商品説明.txt</code> はページに書かれた特徴・仕様・説明から作ります。「状態」「発送」の文は決まり文句なので、実際に合わせて直してください。<br>
       ・同じ商品でもう一度保存すると、同じフォルダの中の画像が上書きされます。<br>
       ・色違いなどがある商品は、いま選んでいる色の画像が対象です。<br>
       ・スマホのブラウザでは使えません（パソコン向け）。<br>
-      ・<b>版1を登録した方へ</b>: 古いブックマークを消して、上のオレンジのボタンで登録し直してください（画面右下に「版 2」と出れば新しい版です）。
+      ・<b>前の版を登録した方へ</b>: 古いブックマークを消して、上のオレンジのボタンで登録し直してください（画面右下に「版 4」と出れば新しい版です）。
     </p>
   </section>
 </main>
 
 <script>
-const VERSION = '2';
+const VERSION = '4';
 document.getElementById('ver').textContent = VERSION;
 
 // ↓ ブックマークに入る本体（Amazon のページの中で動く）
 function amazonImageSaver() {
-  var VER = '2';
+  var VER = '4';
   if (!/amazon\./.test(location.hostname)) {
     alert('Amazon の商品ページで押してください。');
     return;
@@ -168,6 +171,56 @@ function amazonImageSaver() {
   var titleEl = document.getElementById('productTitle') || document.getElementById('title');
   var title = (titleEl ? titleEl.textContent : document.title).replace(/\s+/g, ' ').trim();
   title = title.replace(/[\\\/:*?"<>|]/g, '_').replace(/[. ]+$/, '').slice(0, 100).replace(/[. ]+$/, '') || 'Amazon画像';
+  var bought = /最後にこの商品を購入したのは\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/.exec(document.body.innerText || document.body.textContent || '');
+  var boughtMD = bought ? ('0' + bought[2]).slice(-2) + ('0' + bought[3]).slice(-2) : '';
+  if (boughtMD) title += ' ' + boughtMD;
+
+  // ページの内容から出品用の説明文を作る（1行目はフォルダ名と同じ商品名）
+  function clean(t) { return (t || '').replace(/[‎‏​﻿]/g, '').replace(/[ \t ]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim(); }
+  function textOf(e) { return clean(e ? (e.innerText || e.textContent) : ''); }
+  function buildText(name) {
+    var feats = [];
+    document.querySelectorAll('#feature-bullets li, #featurebullets_feature_div li').forEach(function (li) {
+      if (li.closest('#replacementPartsFitmentBullet')) return;
+      var t = textOf(li).replace(/\n+/g, ' ');
+      if (t && feats.indexOf(t) < 0 && !/^›|この商品について/.test(t)) feats.push(t);
+    });
+    var specs = [], seenKey = {};
+    function addSpec(k, v) {
+      k = clean(k).replace(/[\s:：‏‎]+$/, ''); v = clean(v).replace(/\n+/g, ' ');
+      if (!k || !v || seenKey[k]) return;
+      if (/ASIN|ランキング|レビュー|取り扱い開始日|発売日|Amazon|製造元リファレンス|メーカーにより製造中止|おすすめ度|Best Sellers|Customer Reviews|Date First/i.test(k)) return;
+      seenKey[k] = 1; specs.push(k + '：' + v);
+    }
+    var sz = document.querySelector('#variation_size_name .selection, #inline-twister-expanded-dimension-text-size_name');
+    var col = document.querySelector('#variation_color_name .selection, #inline-twister-expanded-dimension-text-color_name');
+    if (sz) addSpec('サイズ', sz.textContent);
+    if (col) addSpec('カラー', col.textContent);
+    document.querySelectorAll('#productOverview_feature_div tr, #poExpander tr').forEach(function (tr) {
+      var td = tr.querySelectorAll('td'); if (td.length >= 2) addSpec(td[0].textContent, td[1].textContent);
+    });
+    document.querySelectorAll('#productDetails_techSpec_section_1 tr, #productDetails_techSpec_section_2 tr, #productDetails_detailBullets_sections1 tr').forEach(function (tr) {
+      var th = tr.querySelector('th'), td = tr.querySelector('td'); if (th && td) addSpec(th.textContent, td.textContent);
+    });
+    document.querySelectorAll('#detailBullets_feature_div li').forEach(function (li) {
+      var sp = li.querySelectorAll('span > span'); if (sp.length >= 2) addSpec(sp[0].textContent, sp[1].textContent);
+    });
+    var desc = textOf(document.querySelector('#productDescription'));
+    var L = [name, '', 'ご覧いただきありがとうございます。', ''];
+    if (feats.length) { L.push('【商品の特徴】'); feats.forEach(function (f) { L.push('・' + f); }); L.push(''); }
+    if (specs.length) { L.push('【仕様】'); specs.forEach(function (f) { L.push('・' + f); }); L.push(''); }
+    if (desc) { L.push('【商品説明】', desc, ''); }
+    L.push('【状態】', '新品・未使用品です。', '※実際の状態に合わせて書き換えてください。', '');
+    L.push('【発送について】', '匿名配送にて、丁寧に梱包して発送いたします。', '');
+    L.push('ご不明な点がございましたら、お気軽にコメントください。', 'よろしくお願いいたします。');
+    return (L.join('\n') + '\n').replace(/\r?\n/g, '\r\n');
+  }
+  function textBlob(name) {
+    var t = buildText(name);
+    return { blob: new Blob([t], { type: 'text/plain;charset=utf-8' }), len: t.split('\r\n').slice(1).join('\n').trim().length };
+  }
+  var TXT = '商品説明.txt';
+  function lenNote(n) { return '説明文 ' + n + ' 文字' + (n > 3000 ? '（メルカリは3000文字まで。長いので削ってください）' : '') + '。'; }
 
   var old = document.getElementById('ais-panel');
   if (old) old.remove();
@@ -182,7 +235,7 @@ function amazonImageSaver() {
   var close = el('button', 'float:right;background:none;border:0;color:#fff;font-size:18px;cursor:pointer;line-height:1', '×');
   close.onclick = function () { box.remove(); };
   head.appendChild(close);
-  var msg = el('div', '', urls.length + ' 枚の画像が見つかりました。');
+  var msg = el('div', '', urls.length + ' 枚の画像が見つかりました。画像と一緒に「' + TXT + '」（出品用の説明文）も保存します。');
   var lab = el('div', 'margin-top:6px;font-size:12px;color:#ccc', 'フォルダ名（変えてもOK）');
   var input = el('input', 'width:100%;box-sizing:border-box;font:13px sans-serif;padding:5px;border-radius:4px;border:0;color:#000');
   input.value = title;
@@ -273,7 +326,11 @@ function amazonImageSaver() {
     return next();
   }
 
-  bPlain.onclick = function () { run(function (b, name) { download(b, name); }, 400, '（ダウンロードフォルダ）'); };
+  bPlain.onclick = function () {
+    var tb = textBlob(input.value.trim() || title);
+    download(tb.blob, TXT);
+    run(function (b, name) { download(b, name); }, 400, '（ダウンロードフォルダ）' + lenNote(tb.len));
+  };
 
   bFolder.onclick = function () {
     var name = input.value.replace(/[\\\/:*?"<>|]/g, '_').replace(/[. ]+$/, '').trim() || 'Amazon画像';
@@ -284,11 +341,19 @@ function amazonImageSaver() {
     ready
       .then(function (p) { return p.getDirectoryHandle(name, { create: true }); })
       .then(function (dir) {
+        var tb = textBlob(name);
+        return dir.getFileHandle(TXT, { create: true })
+          .then(function (fh) { return fh.createWritable(); })
+          .then(function (w) { return w.write(tb.blob).then(function () { return w.close(); }); })
+          .then(function () { return dir; });
+      })
+      .then(function (dir) {
+        var tl = textBlob(name).len;
         return run(function (b, fname) {
           return dir.getFileHandle(fname, { create: true })
             .then(function (fh) { return fh.createWritable(); })
             .then(function (w) { return w.write(b).then(function () { return w.close(); }); });
-        }, 50, '（「' + parent.name + '」→「' + name + '」）');
+        }, 50, '（「' + parent.name + '」→「' + name + '」）' + lenNote(tl));
       })
       .catch(function (e) {
         if (e && e.name === 'AbortError') return;
