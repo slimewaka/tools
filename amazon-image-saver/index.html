@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amazon画像保存</title>
+<style>
+  :root { --bg:#f7f7f5; --fg:#222; --sub:#666; --card:#fff; --line:#ddd; --accent:#e47911; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1b1b1b; --fg:#eee; --sub:#aaa; --card:#262626; --line:#444; --accent:#ff9a3c; }
+  }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui, sans-serif; line-height:1.7; }
+  main { max-width:720px; margin:0 auto; padding:24px 16px 48px; }
+  .back { color:var(--sub); text-decoration:none; font-size:.85rem; }
+  .back:hover { color:var(--accent); }
+  h1 { font-size:1.5rem; margin:0 0 4px; }
+  .ver { color:var(--sub); font-size:.85rem; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-top:18px; }
+  h2 { font-size:1.1rem; margin:0 0 8px; }
+  ol { padding-left:1.4em; margin:0; }
+  li { margin:4px 0; }
+  .bm { display:inline-block; margin:10px 0; padding:10px 18px; background:var(--accent); color:#fff; border-radius:8px;
+        text-decoration:none; font-weight:bold; cursor:grab; }
+  .drop { text-align:center; margin:14px 0 6px; }
+  .bm { font-size:1.2rem; padding:14px 28px; }
+  .arrow { color:var(--sub); font-size:.9rem; }
+  details { margin-top:10px; }
+  summary { cursor:pointer; color:var(--sub); }
+  button { font:inherit; padding:2px 10px; cursor:pointer; }
+  .note { color:var(--sub); font-size:.9rem; }
+  code { background:rgba(128,128,128,.15); padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="../">← ツール一覧</a>
+  <h1>Amazon画像保存</h1>
+  <div class="ver">版 <span id="ver"></span></div>
+
+  <section>
+    <h2>できること</h2>
+    Amazon の商品ページで押すと、その商品の画像（大きいサイズ）を
+    <code>1.jpg</code>、<code>2.jpg</code>、<code>3.jpg</code>… と順番に名前を付けて保存します。
+  </section>
+
+  <section>
+    <h2>登録（最初の1回だけ・パソコンの Chrome / Edge）</h2>
+    <ol>
+      <li>ブックマークバーが出ていなければ <code>Ctrl</code>+<code>Shift</code>+<code>B</code> を押して出します。</li>
+      <li>下のオレンジのボタンを、マウスでつかんで<b>ブックマークバーまで引っぱって離します</b>。これで登録完了です。</li>
+    </ol>
+    <div class="drop">
+      <a class="bm" id="bm" href="#" onclick="alert('クリックではなく、つかんでブックマークバーまで引っぱってください。');return false;">📷 Amazon画像保存</a>
+      <div class="arrow">↑ ブックマークバーへ引っぱる</div>
+    </div>
+    <details>
+      <summary>うまく引っぱれないとき</summary>
+      <ol>
+        <li><button type="button" id="copy">登録用の文字をコピー</button> を押します。</li>
+        <li>ブックマークバーの空いているところを右クリック →「ページを追加…」。</li>
+        <li>名前に「Amazon画像保存」、URL の欄を消してから貼り付け（<code>Ctrl</code>+<code>V</code>）→「保存」。</li>
+      </ol>
+    </details>
+  </section>
+
+  <section>
+    <h2>使い方</h2>
+    <ol>
+      <li>Amazon の商品ページを開きます。</li>
+      <li>ブックマークバーの「Amazon画像保存」を押します。</li>
+      <li>見つかった枚数が出るので「OK」を押すと保存が始まります。</li>
+      <li>初回だけ「複数のファイルをダウンロードしようとしています」と出たら「許可」を押します。</li>
+    </ol>
+    <p class="note">
+      ・保存先はいつものダウンロードフォルダです。同じ名前のファイルがあると <code>1 (1).jpg</code> のようになるので、商品ごとにフォルダを分けると分かりやすいです。<br>
+      ・色違いなどがある商品は、いま選んでいる色の画像が対象です。<br>
+      ・保存の前に、名前の頭に付ける文字（例: <code>靴_</code> → <code>靴_1.jpg</code>）を入れることもできます。空のままなら番号だけです。<br>
+      ・スマホのブラウザでは使えません（パソコン向け）。<br>
+      ・新しい版が出たときは、古いブックマークを消して登録し直してください。
+    </p>
+  </section>
+</main>
+
+<script>
+const VERSION = '1';
+document.getElementById('ver').textContent = VERSION;
+
+// ↓ ブックマークに入る本体（Amazon のページの中で動く）
+function amazonImageSaver() {
+  var VER = '1';
+  if (!/amazon\./.test(location.hostname)) {
+    alert('Amazon の商品ページで押してください。');
+    return;
+  }
+
+  // 画像の「名前」部分（/I/ のあと、最初の . まで）で同じ画像をまとめる
+  function idOf(u) { var m = /\/I\/([^.\/]+)/.exec(u); return m ? m[1] : u; }
+  // サイズ指定（._AC_SX300_. など）を外して元の大きさにする
+  function full(u) { return u.replace(/\._[^\/]*_\.(jpe?g|png|webp|gif)$/i, '.$1'); }
+
+  var urls = [], seen = {};
+  function add(u) {
+    if (!u || !/^https?:/.test(u)) return;
+    var k = idOf(u);
+    if (seen[k]) return;
+    seen[k] = 1; urls.push(u);
+  }
+
+  // 1) ページ内のデータ（colorImages の initial）から取る。これが一番確実で、大きい画像の場所も入っている
+  var html = '';
+  var scripts = document.getElementsByTagName('script');
+  for (var i = 0; i < scripts.length; i++) {
+    var t = scripts[i].textContent;
+    if (t.indexOf('colorImages') >= 0) { html = t; break; }
+  }
+  var p = html.indexOf("'initial'");
+  if (p < 0) p = html.indexOf('"initial"');
+  if (p >= 0) {
+    var s = html.indexOf('[', p), depth = 0, e = -1, inStr = false;
+    for (var j = s; j >= 0 && j < html.length; j++) {
+      var c = html[j];
+      if (inStr) { if (c === '\\') j++; else if (c === '"') inStr = false; continue; }
+      if (c === '"') inStr = true;
+      else if (c === '[') depth++;
+      else if (c === ']') { depth--; if (depth === 0) { e = j; break; } }
+    }
+    if (e > s) {
+      try {
+        var arr = JSON.parse(html.slice(s, e + 1));
+        arr.forEach(function (o) {
+          var big = o.hiRes || o.large || (o.main && Object.keys(o.main)[0]);
+          add(big);
+        });
+      } catch (err) {}
+    }
+  }
+
+  // 2) 見つからなければ、左の小さい画像の一覧から作る
+  if (!urls.length) {
+    var thumbs = document.querySelectorAll('#altImages img, #imageBlock img, #ivThumbs img');
+    for (var k = 0; k < thumbs.length; k++) {
+      var src = thumbs[k].getAttribute('src') || '';
+      if (/\/images\/I\//.test(src) && !/play-icon|sprite|transparent-pixel/i.test(src)) add(full(src));
+    }
+  }
+
+  // 3) それでもなければ、大きく表示されている1枚
+  if (!urls.length) {
+    var main = document.querySelector('#landingImage, #imgBlkFront, #main-image');
+    if (main) {
+      var big = main.getAttribute('data-old-hires');
+      if (!big) {
+        try { big = Object.keys(JSON.parse(main.getAttribute('data-a-dynamic-image')))[0]; } catch (err) {}
+      }
+      add(big || full(main.src));
+    }
+  }
+
+  if (!urls.length) {
+    alert('このページでは商品画像が見つかりませんでした。商品ページで押してください。');
+    return;
+  }
+
+  var prefix = prompt(urls.length + ' 枚の画像が見つかりました。\n'
+    + '1.jpg, 2.jpg … の名前で保存します。\n\n'
+    + '名前の頭に付ける文字があれば入れてください（なければ空のままOK）。', '');
+  if (prefix === null) return;
+  prefix = prefix.replace(/[\\\/:*?"<>|]/g, '_');
+
+  // 進み具合の表示
+  var box = document.createElement('div');
+  box.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647;background:#232f3e;color:#fff;'
+    + 'padding:12px 16px;border-radius:8px;font:14px/1.6 sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.4);max-width:320px';
+  document.body.appendChild(box);
+  function show(msg) { box.textContent = msg; }
+
+  var failed = [];
+  function extOf(u, type) {
+    if (type && /png/.test(type)) return 'png';
+    if (type && /webp/.test(type)) return 'webp';
+    if (type && /gif/.test(type)) return 'gif';
+    var m = /\.(png|webp|gif)(\?|$)/i.exec(u);
+    return m ? m[1].toLowerCase() : 'jpg';
+  }
+  function save(blob, name) {
+    var a = document.createElement('a');
+    var obj = URL.createObjectURL(blob);
+    a.href = obj; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(obj); }, 10000);
+  }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  var n = 0;
+  (function next() {
+    if (n >= urls.length) {
+      if (failed.length) {
+        show((urls.length - failed.length) + ' 枚保存しました。' + failed.length + ' 枚は保存できませんでした（新しいタブで開きます）。');
+        failed.forEach(function (f) { window.open(f.url, '_blank'); });
+      } else {
+        show(urls.length + ' 枚すべて保存しました。（版 ' + VER + '）');
+      }
+      setTimeout(function () { box.remove(); }, 6000);
+      return;
+    }
+    var u = urls[n], num = n + 1;
+    show('保存中… ' + num + ' / ' + urls.length);
+    fetch(u, { mode: 'cors', credentials: 'omit' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); })
+      .then(function (b) { save(b, prefix + num + '.' + extOf(u, b.type)); })
+      .catch(function () { failed.push({ num: num, url: u }); })
+      .then(function () { return wait(400); })
+      .then(function () { n++; next(); });
+  })();
+}
+
+const code = '(' + amazonImageSaver.toString() + ')()';
+const bmHref = 'javascript:' + encodeURIComponent(code);
+document.getElementById('bm').href = bmHref;
+document.getElementById('copy').onclick = function () {
+  navigator.clipboard.writeText(bmHref).then(
+    () => { this.textContent = 'コピーしました'; },
+    () => { prompt('この文字を全部コピーしてください', bmHref); });
+};
+</script>
+</body>
+</html>
