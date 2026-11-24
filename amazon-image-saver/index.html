@@ -82,18 +82,19 @@
       ・同じ商品でもう一度保存すると、同じフォルダの中の画像が上書きされます。<br>
       ・色違いなどがある商品は、いま選んでいる色の画像が対象です。<br>
       ・スマホのブラウザでは使えません（パソコン向け）。<br>
-      ・<b>前の版を登録した方へ</b>: 古いブックマークを消して、上のオレンジのボタンで登録し直してください（画面右下に「版 6」と出れば新しい版です）。
+      ・新しい版が出ると、ブックマークを押したときに右下の画面に赤い字で「古い版です」と出ます。そのときは登録し直してください。<br>
+      ・<b>前の版を登録した方へ</b>: 古いブックマークを消して、上のオレンジのボタンで登録し直してください（画面右下に「版 7」と出れば新しい版です）。
     </p>
   </section>
 </main>
 
 <script>
-const VERSION = '6';
+const VERSION = '7';
 document.getElementById('ver').textContent = VERSION;
 
 // ↓ ブックマークに入る本体（Amazon のページの中で動く）
 function amazonImageSaver() {
-  var VER = '6';
+  var VER = '7';
   if (!/amazon\./.test(location.hostname)) {
     alert('Amazon の商品ページで押してください。');
     return;
@@ -183,6 +184,7 @@ function amazonImageSaver() {
     document.querySelectorAll('#feature-bullets li, #featurebullets_feature_div li').forEach(function (li) {
       if (li.closest('#replacementPartsFitmentBullet')) return;
       var t = textOf(li).replace(/\n+/g, ' ');
+      if (/^【[^】]*(サポート|サービス|保証|返品|返金|アフター|お問い合わせ)[^】]*】/.test(t)) return;
       if (t && feats.indexOf(t) < 0 && !/^›|この商品について/.test(t)) feats.push(t);
     });
     var specs = [], seenKey = {};
@@ -255,7 +257,20 @@ function amazonImageSaver() {
   var bPlain = el('button', btnCss + 'background:#ddd;color:#000', 'ダウンロードにそのまま保存');
   var change = el('a', 'color:#9cf;font-size:12px;cursor:pointer;margin-left:6px', '保存先を変える');
   var status = el('div', 'margin-top:8px');
-  [head, msg, lab, input, where, bFolder, bPlain, status].forEach(function (x) { box.appendChild(x); });
+  var upd = el('div', 'display:none;margin:6px 0;padding:6px 8px;background:#c40000;border-radius:6px;font-weight:bold');
+  [head, upd, msg, lab, input, where, bFolder, bPlain, status].forEach(function (x) { box.appendChild(x); });
+  fetch('https://slimewaka.github.io/tools/amazon-image-saver/?t=' + Date.now(), { cache: 'no-store', credentials: 'omit' })
+    .then(function (r) { return r.text(); })
+    .then(function (h) {
+      var m = /const VERSION = '(\d+)'/.exec(h);
+      if (m && +m[1] > +VER) {
+        upd.textContent = 'このブックマークは古い版です（新しい版 ' + m[1] + ' があります）。ブックマークを消して、';
+        var a = el('a', 'color:#fff;text-decoration:underline', '公開ページ');
+        a.href = 'https://slimewaka.github.io/tools/amazon-image-saver/?v=' + m[1]; a.target = '_blank';
+        upd.appendChild(a); upd.appendChild(document.createTextNode(' から登録し直してください。'));
+        upd.style.display = 'block';
+      }
+    }).catch(function () {});
   var canFolder = !!window.showDirectoryPicker;
   if (!canFolder) { bFolder.style.display = 'none'; where.textContent = 'このブラウザはフォルダを作る保存に対応していません。'; }
 
