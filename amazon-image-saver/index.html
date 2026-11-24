@@ -41,7 +41,7 @@
     <h2>できること</h2>
     Amazon の商品ページで押すと、<b>商品名のフォルダ</b>を作り、その中に商品の画像（大きいサイズ）を
     <code>1.jpg</code>、<code>2.jpg</code>、<code>3.jpg</code>… と順番に名前を付けて保存します。<br>
-    同じフォルダに、メルカリ・ヤフオクの出品に使える説明文（<code>商品説明.txt</code>）も作ります。1行目は商品名です。<br>
+    同じフォルダに、メルカリ・ヤフオクの出品に使える説明文（<code>商品説明.txt</code>）も作ります。1行目は商品名で、いま選んでいる色・サイズの値段を「標準価格：￥3,899」のように書きます。<br>
     前に買ったことがある商品（ページに「最後にこの商品を購入したのは2026年11月21日です。」と出るもの）は、商品名の後ろに <code> 1121</code> のように購入した月日を付けます。
   </section>
 
@@ -82,18 +82,18 @@
       ・同じ商品でもう一度保存すると、同じフォルダの中の画像が上書きされます。<br>
       ・色違いなどがある商品は、いま選んでいる色の画像が対象です。<br>
       ・スマホのブラウザでは使えません（パソコン向け）。<br>
-      ・<b>前の版を登録した方へ</b>: 古いブックマークを消して、上のオレンジのボタンで登録し直してください（画面右下に「版 4」と出れば新しい版です）。
+      ・<b>前の版を登録した方へ</b>: 古いブックマークを消して、上のオレンジのボタンで登録し直してください（画面右下に「版 5」と出れば新しい版です）。
     </p>
   </section>
 </main>
 
 <script>
-const VERSION = '4';
+const VERSION = '5';
 document.getElementById('ver').textContent = VERSION;
 
 // ↓ ブックマークに入る本体（Amazon のページの中で動く）
 function amazonImageSaver() {
-  var VER = '4';
+  var VER = '5';
   if (!/amazon\./.test(location.hostname)) {
     alert('Amazon の商品ページで押してください。');
     return;
@@ -206,7 +206,18 @@ function amazonImageSaver() {
       var sp = li.querySelectorAll('span > span'); if (sp.length >= 2) addSpec(sp[0].textContent, sp[1].textContent);
     });
     var desc = textOf(document.querySelector('#productDescription'));
+    var price = '';
+    var pSel = ['#corePrice_feature_div .a-price .a-offscreen', '#corePriceDisplay_desktop_feature_div .priceToPay .a-offscreen', '#corePriceDisplay_desktop_feature_div .a-price .a-offscreen', '#apex_desktop .priceToPay .a-offscreen', '#apex_desktop .a-price .a-offscreen', '#priceblock_ourprice', '#priceblock_dealprice', '#price_inside_buybox', '#newBuyBoxPrice', '#tp_price_block_total_price_ww .a-offscreen'];
+    for (var q = 0; q < pSel.length && !price; q++) {
+      var pe = document.querySelector(pSel[q]);
+      if (pe) price = clean(pe.textContent);
+      if (!price && pe) { var w = pe.closest('.a-price'); if (w && w.querySelector('.a-price-whole')) price = clean(w.querySelector('.a-price-whole').textContent); }
+    }
+    if (!price) { var wh = document.querySelector('#corePriceDisplay_desktop_feature_div .a-price-whole, #corePrice_feature_div .a-price-whole'); if (wh) price = clean(wh.textContent); }
+    var pm = /([\d,]+)/.exec(price.replace(/[.,]$/, ''));
+    price = pm ? '￥' + pm[1].replace(/,+$/, '') : '';
     var L = [name, '', 'ご覧いただきありがとうございます。', ''];
+    if (price) L.push('標準価格：' + price, '');
     if (feats.length) { L.push('【商品の特徴】'); feats.forEach(function (f) { L.push('・' + f); }); L.push(''); }
     if (specs.length) { L.push('【仕様】'); specs.forEach(function (f) { L.push('・' + f); }); L.push(''); }
     if (desc) { L.push('【商品説明】', desc, ''); }
