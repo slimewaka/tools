@@ -83,18 +83,18 @@
       ・色違いなどがある商品は、いま選んでいる色の画像が対象です。<br>
       ・スマホのブラウザでは使えません（パソコン向け）。<br>
       ・新しい版が出ると、ブックマークを押したときに右下の画面に赤い字で「古い版です」と出ます。そのときは登録し直してください。<br>
-      ・<b>前の版を登録した方へ</b>: 古いブックマークを消して、上のオレンジのボタンで登録し直してください（画面右下に「版 8」と出れば新しい版です）。
+      ・<b>前の版を登録した方へ</b>: 古いブックマークを消して、上のオレンジのボタンで登録し直してください（画面右下に「版 9」と出れば新しい版です）。
     </p>
   </section>
 </main>
 
 <script>
-const VERSION = '8';
+const VERSION = '9';
 document.getElementById('ver').textContent = VERSION;
 
 // ↓ ブックマークに入る本体（Amazon のページの中で動く）
 function amazonImageSaver() {
-  var VER = '8';
+  var VER = '9';
   if (!/amazon\./.test(location.hostname)) {
     alert('Amazon の商品ページで押してください。');
     return;
@@ -178,7 +178,17 @@ function amazonImageSaver() {
 
   // ページの内容から出品用の説明文を作る（1行目はフォルダ名と同じ商品名）
   function clean(t) { return (t || '').replace(/[‎‏​﻿]/g, '').replace(/[ \t ]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim(); }
-  function textOf(e) { return clean(e ? (e.innerText || e.textContent) : ''); }
+  function plain(e) {
+    if (!e) return '';
+    var c = e.cloneNode(true);
+    c.querySelectorAll('script, style, noscript, template').forEach(function (x) { x.remove(); });
+    var full = c.querySelector('.a-truncate-full');
+    if (full) { c.querySelectorAll('.a-truncate-cut').forEach(function (x) { x.remove(); }); }
+    c.querySelectorAll('[id*="see-more"], [id*="see-less"], .a-expander-prompt, .a-declarative[data-action="a-expander-toggle"]').forEach(function (x) { x.remove(); });
+    var t = full ? full.textContent : (c.innerText || c.textContent);
+    return clean(t).replace(/\s*(表示を増やす|表示を減らす|もっと見る|一部を表示|See more|See less)\s*$/i, '');
+  }
+  function textOf(e) { return plain(e); }
   function buildText(name) {
     var feats = [];
     document.querySelectorAll('#feature-bullets li, #featurebullets_feature_div li').forEach(function (li) {
@@ -199,13 +209,13 @@ function amazonImageSaver() {
     if (sz) addSpec('サイズ', sz.textContent);
     if (col) addSpec('カラー', col.textContent);
     document.querySelectorAll('#productOverview_feature_div tr, #poExpander tr').forEach(function (tr) {
-      var td = tr.querySelectorAll('td'); if (td.length >= 2) addSpec(td[0].textContent, td[1].textContent);
+      var td = tr.querySelectorAll('td'); if (td.length >= 2) addSpec(plain(td[0]), plain(td[1]));
     });
     document.querySelectorAll('#productDetails_techSpec_section_1 tr, #productDetails_techSpec_section_2 tr, #productDetails_detailBullets_sections1 tr').forEach(function (tr) {
-      var th = tr.querySelector('th'), td = tr.querySelector('td'); if (th && td) addSpec(th.textContent, td.textContent);
+      var th = tr.querySelector('th'), td = tr.querySelector('td'); if (th && td) addSpec(plain(th), plain(td));
     });
     document.querySelectorAll('#detailBullets_feature_div li').forEach(function (li) {
-      var sp = li.querySelectorAll('span > span'); if (sp.length >= 2) addSpec(sp[0].textContent, sp[1].textContent);
+      var sp = li.querySelectorAll('span > span'); if (sp.length >= 2) addSpec(plain(sp[0]), plain(sp[1]));
     });
     var desc = textOf(document.querySelector('#productDescription'));
     var price = '';
