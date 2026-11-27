@@ -28,7 +28,9 @@
     display: flex; flex-direction: column; gap: 8px; background: linear-gradient(#000c, #0000); z-index: 5; }
   .title { display: flex; align-items: baseline; gap: 8px; font-weight: 700; font-size: 15px; }
   .title .back { color: var(--dim); text-decoration: none; font-weight: 500; font-size: 13px; }
-  .title .ver { margin-left: auto; color: var(--dim); font-weight: 500; font-size: 11px; }
+  .title .mini { margin-left: auto; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+    border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 11px; font-weight: 700; }
+  .title .ver { color: var(--dim); font-weight: 500; font-size: 11px; }
   .modes { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
   .modes::-webkit-scrollbar { display: none; }
   .modes button { flex: none; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
@@ -75,7 +77,7 @@
 </div>
 
 <div class="top">
-  <div class="title"><a class="back" href="../">← ツール一覧</a><span>ジョーク測定カメラ</span><span class="ver" id="ver"></span></div>
+  <div class="title"><a class="back" href="../">← ツール一覧</a><span>ジョーク測定カメラ</span><button type="button" class="mini" id="people">記録 0人</button><span class="ver" id="ver"></span></div>
   <div class="modes" id="modes"></div>
   <div class="note">※ジョークです。数値はすべてでたらめです</div>
 </div>
@@ -104,7 +106,7 @@
 </div>
 
 <script type="module">
-const VERSION = '2';
+const VERSION = '3';
 document.getElementById('ver').textContent = '版 ' + VERSION;
 
 /* ---------- 調査用の記録（?debug） ---------- */
@@ -136,41 +138,41 @@ const clamp01 = v => Math.min(1, Math.max(0, v));
 const MODES = [
   { id: 'power', name: '戦闘力', color: '#3ee6a0',
     make() {
-      if (Math.random() < .03) return { num: '測定不能', lv: 1 };
+      if (Math.random() < .03) return { num: '測定不能', lv: 1, v: 1e12 };
       const v = logRnd(3, 600000);
-      return { num: comma(v), lv: clamp01(Math.log(v / 3) / Math.log(200000)) };
+      return { num: comma(v), lv: clamp01(Math.log(v / 3) / Math.log(200000)), v };
     },
     noise: () => ({ num: comma(logRnd(3, 999999)) }) },
   { id: 'exp', name: '経験人数', color: '#ff7eb6',
     make() {
       const r = Math.random();
-      if (r < .03) return { num: '999+', unit: '人', lv: 1 };
+      if (r < .03) return { num: '999+', unit: '人', lv: 1, v: 1e6 };
       const v = r < .12 ? 0 : Math.floor(logRnd(1, 100));
-      return { num: String(v), unit: '人', lv: clamp01(v / 50) };
+      return { num: String(v), unit: '人', lv: clamp01(v / 50), v };
     },
     noise: () => ({ num: String(Math.floor(rnd(0, 99))), unit: '人' }) },
   { id: 'life', name: '残りの寿命', color: '#ffb347',
     make() {
       const r = Math.random();
-      if (r < .04) return { pre: 'あと', num: String(Math.floor(rnd(1, 7))), unit: '日', lv: 1 };
-      if (r < .06) return { num: '∞', lv: 0 };
+      if (r < .04) { const d = Math.floor(rnd(1, 7)); return { pre: 'あと', num: String(d), unit: '日', lv: 1, v: d / 365 }; }
+      if (r < .06) return { num: '∞', lv: 0, v: 1e6 };
       const v = Math.floor(rnd(3, 85));
-      return { pre: 'あと', num: String(v), unit: '年', lv: clamp01(1 - v / 60) };
+      return { pre: 'あと', num: String(v), unit: '年', lv: clamp01(1 - v / 60), v };
     },
     noise: () => ({ pre: 'あと', num: String(Math.floor(rnd(0, 99))), unit: '年' }) },
   { id: 'money', name: '年収', color: '#ffe04a',
     make() {
       const man = logRnd(80, 300000);
       const lv = clamp01(Math.log(man / 80) / Math.log(3000 / 80));
-      if (man >= 10000) return { num: (man / 10000).toFixed(1), unit: '億円', lv };
-      return { num: comma(man), unit: '万円', lv };
+      if (man >= 10000) return { num: (man / 10000).toFixed(1), unit: '億円', lv, v: man };
+      return { num: comma(man), unit: '万円', lv, v: man };
     },
     noise: () => ({ num: comma(rnd(0, 9999)), unit: '万円' }) },
   { id: 'iq', name: 'IQ', color: '#6fc3ff',
-    make() { const v = Math.max(40, Math.round(100 + gauss() * 22)); return { pre: 'IQ', num: String(v), lv: clamp01((v - 70) / 70) }; },
+    make() { const v = Math.max(40, Math.round(100 + gauss() * 22)); return { pre: 'IQ', num: String(v), lv: clamp01((v - 70) / 70), v }; },
     noise: () => ({ pre: 'IQ', num: String(Math.floor(rnd(40, 200))) }) },
   { id: 'mote', name: 'モテ度', color: '#d38cff',
-    make() { const v = Math.floor(rnd(0, 101)); return { num: String(v), unit: '%', lv: v / 100 }; },
+    make() { const v = Math.floor(rnd(0, 101)); return { num: String(v), unit: '%', lv: v / 100, v }; },
     noise: () => ({ num: String(Math.floor(rnd(0, 101))), unit: '%' }) },
 ];
 let mode = MODES[0];
@@ -183,7 +185,7 @@ for (const m of MODES) {
     mode = m;
     for (const x of modesEl.children) x.setAttribute('aria-pressed', x === b);
     // 種類を変えたら測り直しの演出をする（同じ人の値は種類ごとに覚えておく）
-    for (const t of tracks) if (!t.values[m.id]) t.measureStart = performance.now();
+    for (const t of tracks) if (!valueOf(t, m.id)) t.measureStart = performance.now();
     log('mode', m.id);
   };
   modesEl.append(b);
@@ -227,7 +229,142 @@ async function loadDetector() {
   catch (e) { log('GPU failed', String(e)); detector = await FaceDetector.createFromOptions(files, opts('CPU')); log('detector CPU'); }
 }
 
-/* ---------- 人ごとの追跡（同じ人には同じ数値を出す） ---------- */
+/* ---------- 顔の見分け（前に測った人には同じ数値を出す） ---------- */
+// SFace で顔の特徴を128個の数にし、このスマホの中だけに記録して照らし合わせる
+const PEOPLE_KEY = 'joke-camera-people-v1';
+const MAX_PEOPLE = 300;
+const SAME_PERSON = 0.42;   // 似ている度合い（-1〜1）がこれ以上なら同じ人とみなす
+const SAMPLES = 3;          // 何枚分の顔を平均してから照らし合わせるか
+let people = [];
+try { people = JSON.parse(localStorage.getItem(PEOPLE_KEY) || '[]'); } catch (e) { people = []; }
+const peopleBtn = document.getElementById('people');
+function savePeople() {
+  if (people.length > MAX_PEOPLE) { people.sort((a, b) => b.last - a.last); people.length = MAX_PEOPLE; }
+  try { localStorage.setItem(PEOPLE_KEY, JSON.stringify(people)); } catch (e) { log('save failed', String(e)); }
+  peopleBtn.textContent = '記録 ' + people.length + '人';
+}
+peopleBtn.textContent = '記録 ' + people.length + '人';
+peopleBtn.onclick = () => {
+  if (!people.length) { alert('まだ記録はありません。\n測った人の顔の特徴と数値を、このスマホの中だけに記録します。'); return; }
+  if (!confirm('これまでに測った ' + people.length + '人の記録を消しますか？\n（顔の特徴と数値。このスマホの中にだけ保存されています）')) return;
+  people = []; savePeople();
+  for (const t of tracks) { t.person = null; t.samples = []; t.values = {}; t.measureStart = performance.now(); }
+  log('people cleared');
+};
+
+// 計算は別の作業場所（Worker）で行い、その間も画面が止まらないようにする
+let recognizer = null, recognizing = false;
+async function loadRecognizer() {
+  const base = new URL('./lib/', location.href).href;
+  const code = `
+    importScripts(${JSON.stringify(base + 'ort.wasm.min.js')});
+    ort.env.wasm.wasmPaths = ${JSON.stringify(base)};
+    ort.env.wasm.numThreads = 1;
+    let s = null;
+    onmessage = async e => {
+      try {
+        if (e.data.type === 'load') {
+          s = await ort.InferenceSession.create(e.data.model, { executionProviders: ['wasm'] });
+          postMessage({ ok: true, info: s.inputNames.concat(s.outputNames) });
+        } else {
+          const out = await s.run({ [s.inputNames[0]]: new ort.Tensor('float32', e.data.input, [1, 3, 112, 112]) });
+          postMessage({ ok: true, emb: out[s.outputNames[0]].data });
+        }
+      } catch (err) { postMessage({ ok: false, error: String(err) }); }
+    };`;
+  const w = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+  const call = msg => new Promise((ok, ng) => {
+    w.onmessage = e => e.data.ok ? ok(e.data) : ng(new Error(e.data.error));
+    w.onerror = e => ng(new Error(e.message || 'worker error'));
+    w.postMessage(msg, msg.input ? [msg.input.buffer] : []);
+  });
+  const r = await call({ type: 'load', model: base + 'face_recognition_sface_2021dec_int8.onnx' });
+  recognizer = { run: input => call({ type: 'run', input }) };
+  log('recognizer ok', r.info);
+}
+
+// 目・鼻・口の位置を、SFace が学習したときの決まった位置（112×112）に合わせて切り出す
+const ALIGN_DST = [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366], [56.1396, 92.2848]];
+const alignCanvas = document.createElement('canvas');
+alignCanvas.width = alignCanvas.height = 112;
+const alignCtx = alignCanvas.getContext('2d', { willReadFrequently: true });
+function alignFace(kp) {
+  const eyes = [kp[0], kp[1]].sort((a, b) => a[0] - b[0]);
+  const src = [eyes[0], eyes[1], kp[2], kp[3]];
+  // 回転・拡大・移動だけの変換を、4点がいちばん合うように求める
+  const n = src.length;
+  let sx = 0, sy = 0, dx = 0, dy = 0;
+  for (let i = 0; i < n; i++) { sx += src[i][0]; sy += src[i][1]; dx += ALIGN_DST[i][0]; dy += ALIGN_DST[i][1]; }
+  sx /= n; sy /= n; dx /= n; dy /= n;
+  let num1 = 0, num2 = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    const x = src[i][0] - sx, y = src[i][1] - sy, u = ALIGN_DST[i][0] - dx, v = ALIGN_DST[i][1] - dy;
+    num1 += x * u + y * v; num2 += x * v - y * u; den += x * x + y * y;
+  }
+  const a = num1 / den, b = num2 / den;
+  alignCtx.setTransform(1, 0, 0, 1, 0, 0);
+  alignCtx.fillStyle = '#000'; alignCtx.fillRect(0, 0, 112, 112);
+  alignCtx.setTransform(a, b, -b, a, dx - (a * sx - b * sy), dy - (b * sx + a * sy));
+  alignCtx.drawImage(video, 0, 0);
+  const px = alignCtx.getImageData(0, 0, 112, 112).data;
+  const input = new Float32Array(3 * 112 * 112);
+  for (let i = 0, j = 0; i < 112 * 112; i++, j += 4) {
+    input[i] = px[j]; input[i + 12544] = px[j + 1]; input[i + 25088] = px[j + 2];
+  }
+  return input;
+}
+const normalize = v => { let n = 0; for (const x of v) n += x * x; n = Math.sqrt(n) || 1; return v.map(x => x / n); };
+const cosine = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
+
+async function embed(kp) {
+  const out = await recognizer.run(alignFace(kp));
+  return normalize(Array.from(out.emb));
+}
+
+// 毎フレーム呼ぶ。まだ誰か分からない人の顔を1つずつ調べる
+async function identifyStep(now) {
+  if (!recognizer || recognizing) return;
+  const t = tracks.find(t => !t.person && !t.gaveUp && t.kp && t.kpTime === now && t.kpW >= 28);
+  if (!t) return;
+  recognizing = true;
+  try {
+    const t0 = performance.now();
+    t.samples.push(await embed(t.kp));
+    if (DEBUG && t.samples.length === 1) log('embed ms', Math.round(performance.now() - t0));
+    if (t.samples.length >= SAMPLES) assignPerson(t);
+  } catch (e) { log('embed error', String(e)); t.gaveUp = true; }
+  recognizing = false;
+}
+
+function assignPerson(t) {
+  const mean = normalize(t.samples[0].map((_, i) => t.samples.reduce((s, e) => s + e[i], 0)));
+  const busy = new Set(tracks.filter(o => o !== t && o.person).map(o => o.person));
+  let best = null, bestSim = -1;
+  for (const p of people) {
+    if (busy.has(p)) continue;
+    const sim = cosine(mean, p.e);
+    if (sim > bestSim) { best = p; bestSim = sim; }
+  }
+  if (best && bestSim >= SAME_PERSON) {
+    // 少しずつ特徴を更新して、向きや明るさの違いに強くする
+    best.e = normalize(best.e.map((x, i) => x * .85 + mean[i] * .15));
+    if (Date.now() - best.last > 60000) best.visits++; // 少し見失っただけなら数えない
+    best.last = Date.now();
+    t.person = best;
+    log('same person', best.id, bestSim.toFixed(3));
+  } else {
+    const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), e: mean, vals: {}, visits: 1, last: Date.now() };
+    // 記録の前に測り終わっていた値は引き継ぐ
+    Object.assign(p.vals, t.values);
+    people.push(p);
+    t.person = p;
+    log('new person', p.id, 'best', bestSim.toFixed(3));
+  }
+  t.person.e = t.person.e.map(x => Math.round(x * 1e4) / 1e4);
+  savePeople();
+}
+
+/* ---------- 人ごとの追跡（画面に映っている間、同じ人を追いかける） ---------- */
 let tracks = [];
 let nextId = 1;
 function updateTracks(boxes, now) {
@@ -241,7 +378,7 @@ function updateTracks(boxes, now) {
       if (d < bestD && d < Math.max(t.w, b.w) * 0.9) { best = t; bestD = d; }
     }
     if (!best) {
-      best = { id: nextId++, values: {}, measureStart: now, born: now, cx, cy, w: b.w, h: b.h, x: b.x, y: b.y };
+      best = { id: nextId++, values: {}, measureStart: now, born: now, cx, cy, w: b.w, h: b.h, person: null, samples: [] };
       tracks.push(best);
       log('new face', best.id);
     }
@@ -250,6 +387,7 @@ function updateTracks(boxes, now) {
     best.cx += (cx - best.cx) * k; best.cy += (cy - best.cy) * k;
     best.w += (b.w - best.w) * k; best.h += (b.h - best.h) * k;
     best.seen = now;
+    if (b.kp) { best.kp = b.kp; best.kpW = b.w; best.kpTime = now; }
     used.add(best);
   }
   // しばらく見えない人は忘れる
@@ -257,11 +395,28 @@ function updateTracks(boxes, now) {
 }
 
 const MEASURE_MS = 1600;
+const ID_WAIT_MS = 5000; // 顔を見分けられないまま、これ以上たったら記録なしで数値を出す
+const valueOf = (t, id) => t.person ? t.person.vals[id] : t.values[id];
 function labelFor(t, now) {
   const el = now - t.measureStart;
-  if (el < MEASURE_MS && !t.values[mode.id]) return { ...mode.noise(), measuring: true, p: el / MEASURE_MS };
-  if (!t.values[mode.id]) t.values[mode.id] = mode.make();
-  return t.values[mode.id];
+  let v = valueOf(t, mode.id);
+  if (!v) {
+    const waiting = recognizer && !t.person && el < ID_WAIT_MS; // まだ誰か調べている
+    if (el < MEASURE_MS || waiting) return { ...mode.noise(), measuring: true, p: Math.min(el / MEASURE_MS, .97) };
+    v = mode.make();
+    if (t.person) { t.person.vals[mode.id] = v; savePeople(); } else t.values[mode.id] = v;
+  }
+  return { ...v, sub: t.person ? badgeFor(t.person, mode.id) : '' };
+}
+// 記録の中で一番高い・低い人と、何回目の測定かを小さく出す
+function badgeFor(person, id) {
+  const vs = people.map(p => p.vals[id]?.v).filter(x => x !== undefined);
+  const me = person.vals[id]?.v;
+  if (vs.length >= 3 && me !== undefined) {
+    if (me >= Math.max(...vs)) return '最高記録';
+    if (me <= Math.min(...vs)) return '最低記録';
+  }
+  return person.visits > 1 ? person.visits + '回目' : '';
 }
 // 低い＝緑 → 黄 → 高い＝赤
 const levelColor = lv => lv < .34 ? '#3dff3d' : lv < .67 ? '#ffee00' : '#ff2a2a';
@@ -305,7 +460,15 @@ function drawLabels(c, W, H, mapper, scale, now, minTop) {
     let total = 0;
     for (const p of parts) { c.font = `900 ${p[1]}px "M PLUS 1 Code", sans-serif`; p.push(c.measureText(p[0]).width); total += p[2]; }
     let x = Math.min(Math.max(cx - total / 2, 4), W - total - 4);
-    const base = Math.max(y0 - fs * .25, minTop + fs * .9);
+    const base = Math.max(y0 - fs * .25, minTop + fs * (lab.sub ? 1.3 : .9));
+    if (lab.sub && !lab.measuring) {
+      const bs = fs * .36;
+      c.font = `900 ${bs}px "M PLUS 1 Code", sans-serif`; c.textAlign = 'center'; c.lineJoin = 'round';
+      c.lineWidth = bs * .25; c.strokeStyle = 'rgba(0,0,0,.85)';
+      const by = base - fs * .95, bx = Math.min(Math.max(cx, total / 2 + 4), W - total / 2 - 4);
+      c.strokeText(lab.sub, bx, by);
+      c.fillStyle = lab.sub.startsWith('最') ? '#ffd23f' : '#fff'; c.fillText(lab.sub, bx, by);
+    }
     c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.lineJoin = 'round';
     for (const [text, size, tw] of parts) {
       c.font = `900 ${size}px "M PLUS 1 Code", sans-serif`;
@@ -322,7 +485,7 @@ function drawScanBar(c, W, H, now, bottomOffset) {
   const visible = tracks.filter(t => now - t.seen <= 900);
   let p = 1, measuring = false;
   for (const t of visible) {
-    if (!t.values[mode.id]) { measuring = true; p = Math.min(p, (now - t.measureStart) / MEASURE_MS); }
+    if (!valueOf(t, mode.id)) { measuring = true; p = Math.min(p, (now - t.measureStart) / MEASURE_MS); }
   }
   const fs = Math.max(13, Math.min(W, H) * .032);
   const x = 14, y = H - bottomOffset - fs * 2.6;
@@ -367,9 +530,11 @@ tileCanvas.width = tileCanvas.height = 256;
 const tileCtx = tileCanvas.getContext('2d', { willReadFrequently: true });
 let tiles = [], tilesKey = '', tileIndex = 0, detectTs = 0;
 
-const toBox = (d, ox = 0, oy = 0, k = 1) => ({
+// kw, kh: 目印（0〜1 の割合）を画素に直すための、調べた画像の幅と高さ
+const toBox = (d, ox, oy, k, kw, kh) => ({
   x: ox + d.boundingBox.originX * k, y: oy + d.boundingBox.originY * k,
   w: d.boundingBox.width * k, h: d.boundingBox.height * k, score: d.categories?.[0]?.score ?? 0,
+  kp: d.keypoints?.length >= 4 ? d.keypoints.slice(0, 4).map(p => [ox + p.x * kw, oy + p.y * kh]) : null,
 });
 function overlaps(a, b) {
   const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
@@ -381,13 +546,13 @@ function detectFaces() {
   const vw = video.videoWidth, vh = video.videoHeight;
   const key = vw + 'x' + vh;
   if (key !== tilesKey) { tiles = makeTiles(vw, vh); tilesKey = key; tileIndex = 0; log('tiles', tiles.length); }
-  const boxes = detector.detectForVideo(video, ++detectTs).detections.map(d => toBox(d));
+  const boxes = detector.detectForVideo(video, ++detectTs).detections.map(d => toBox(d, 0, 0, 1, vw, vh));
   if (tiles.length) {
     const t = tiles[tileIndex++ % tiles.length];
     tileCtx.drawImage(video, t.x, t.y, t.size, t.size, 0, 0, 256, 256);
     const k = t.size / 256;
     for (const d of detector.detectForVideo(tileCanvas, ++detectTs).detections) {
-      const b = toBox(d, t.x, t.y, k);
+      const b = toBox(d, t.x, t.y, k, t.size, t.size);
       // 区切りの端で切れた顔は使わない
       if (b.x - t.x < 2 || b.y - t.y < 2 || t.x + t.size - b.x - b.w < 2 || t.y + t.size - b.y - b.h < 2) continue;
       if (!boxes.some(o => overlaps(o, b))) boxes.push(b);
@@ -403,7 +568,7 @@ function loop() {
   const now = performance.now();
   if (detector && video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
-    try { updateTracks(detectFaces(), now); }
+    try { updateTracks(detectFaces(), now); identifyStep(now); }
     catch (e) { log('detect error', String(e)); }
   }
   const dpr = Math.min(devicePixelRatio || 1, 2);
@@ -487,7 +652,11 @@ document.getElementById('start').onclick = async () => {
     log('detector error', String(e));
     statusEl.classList.remove('hidden');
     statusEl.innerHTML = '<p class="err">顔を見つける部品を読み込めませんでした。<br>電波のよい所で開き直してください。</p>';
+    return;
   }
+  // 顔を見分ける部品は失敗しても、記録なし（毎回ちがう数値）で動かす
+  try { await loadRecognizer(); }
+  catch (e) { log('recognizer error', String(e)); }
 };
 </script>
 </body>
