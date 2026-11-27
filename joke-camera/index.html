@@ -30,7 +30,11 @@
   .title .back { color: var(--dim); text-decoration: none; font-weight: 500; font-size: 13px; }
   .title .mini { margin-left: auto; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
     border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 11px; font-weight: 700; }
-  .title .ver { color: var(--dim); font-weight: 500; font-size: 11px; }
+  .title .ver { color: #fff !important; font-size: 13px !important; font-weight: 700 !important;
+    background: rgba(255,255,255,.16); border-radius: 6px; padding: 1px 7px;
+  }
+  .title .ver.latest { background: rgba(62,230,160,.3); }
+  .title .ver-old { color: var(--dim); font-weight: 500; font-size: 11px; }
   .modes { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
   .modes::-webkit-scrollbar { display: none; }
   .modes button { flex: none; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
@@ -49,6 +53,7 @@
     background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px 20px; text-align: center;
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   #status h2 { margin: 0 0 8px; font-size: 19px; }
+  #status .startver { margin: -4px 0 10px; font-size: 14px; font-weight: 700; color: var(--accent); }
   #status p { margin: 0 0 16px; font-size: 13px; color: var(--dim); line-height: 1.6; }
   #status .err { color: #ff8a8a; }
   .primary { border: 0; border-radius: 12px; background: var(--accent); color: #000; font: inherit; font-weight: 700;
@@ -91,6 +96,7 @@
 
 <div id="status">
   <h2>ジョーク測定カメラ</h2>
+  <div class="startver" id="startVer"></div>
   <p>カメラに映った人の頭の上に、<br>でたらめな数値を表示します。<br>映像はどこにも送信しません。</p>
   <button class="primary" id="start" type="button">カメラを起動</button>
 </div>
@@ -106,8 +112,31 @@
 </div>
 
 <script type="module">
-const VERSION = '3';
-document.getElementById('ver').textContent = '版 ' + VERSION;
+const VERSION = '4';
+const verEl = document.getElementById('ver'), startVerEl = document.getElementById('startVer');
+verEl.textContent = '版 ' + VERSION;
+startVerEl.textContent = '版 ' + VERSION + '（最新か確認中…）';
+
+// 古いページがブラウザに残っていたら、最新の版を読み込み直す
+// （公開ページは10分ほど覚えられるため。同じ版へは1回だけ試して、何度も読み込み直さない）
+(async () => {
+  try {
+    const r = await fetch(location.pathname + '?check=' + Date.now(), { cache: 'no-store' });
+    const latest = (await r.text()).match(/const VERSION = '([^']+)'/)?.[1];
+    if (latest === VERSION) {
+      verEl.textContent = '版 ' + VERSION + ' 最新'; verEl.classList.add('latest');
+      startVerEl.textContent = '版 ' + VERSION + '（最新です）';
+      return;
+    }
+    if (!latest) { startVerEl.textContent = '版 ' + VERSION; return; }
+    let tried = null;
+    try { tried = sessionStorage.getItem('joke-camera-reload'); } catch (e) {}
+    if (tried === latest) { startVerEl.textContent = '版 ' + VERSION + '（最新は 版 ' + latest + '。少し待って開き直してください）'; return; }
+    try { sessionStorage.setItem('joke-camera-reload', latest); } catch (e) {}
+    const u = new URL(location.href); u.searchParams.set('v', latest);
+    location.replace(u.href);
+  } catch (e) { startVerEl.textContent = '版 ' + VERSION; /* 電波がないときなどは、そのまま使う */ }
+})();
 
 /* ---------- 調査用の記録（?debug） ---------- */
 const DEBUG = new URLSearchParams(location.search).has('debug');
