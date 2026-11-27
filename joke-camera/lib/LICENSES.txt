@@ -1,0 +1,12 @@
+このフォルダの部品について
+
+1. MediaPipe Tasks Vision（@mediapipe/tasks-vision 1.2.3 / npm）
+   vision_bundle.mjs, wasm/vision_wasm_internal.js, wasm/vision_wasm_internal.wasm
+   Copyright Google LLC
+   Apache License 2.0  https://www.apache.org/licenses/LICENSE-2.0
+
+2. 顔検出モデル BlazeFace (short range, float16)
+   blaze_face_short_range.tflite
+   https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite
+   Copyright Google LLC
+   Apache License 2.0  https://www.apache.org/licenses/LICENSE-2.0
